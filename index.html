@@ -77,19 +77,40 @@
 
   /* ---------- touch controls ---------- */
   .touch-panel{
-    position:absolute; bottom:70px; display:flex; align-items:center; gap:14px; z-index:5;
+    position:absolute; bottom:70px; display:flex; align-items:center; gap:20px; z-index:5;
   }
-  .touch-panel.left{left:16px;}
-  .touch-panel.right{right:16px;}
-  .dpad{display:grid; grid-template-columns:repeat(3,40px); grid-template-rows:repeat(3,40px); gap:3px;}
-  .dbtn{
-    background:rgba(243,233,210,0.14); border:1px solid rgba(243,233,210,0.3); border-radius:8px;
-    color:var(--chalk); font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  .touch-panel.left{left:20px;}
+  .touch-panel.right{right:20px;}
+
+  /* Analog Joystick */
+  .joystick-zone {
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: rgba(243,233,210,0.08);
+    border: 2px solid rgba(243,233,210,0.15);
+    position: relative;
+    touch-action: none;
   }
+  .joystick-knob {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(243,233,210,0.4);
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    border: 2px solid rgba(243,233,210,0.6);
+  }
+
   .action-btn{
-    width:60px; height:60px; border-radius:50%; border:2px solid rgba(243,233,210,0.4);
+    width:66px; height:66px; border-radius:50%; border:2px solid rgba(243,233,210,0.4);
     background:radial-gradient(circle at 35% 30%, var(--gulal), var(--peacock-dark) 120%);
     color:var(--chalk); font-size:20px; cursor:pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .action-btn:active {
+    transform: scale(0.95);
   }
 
   /* ---------- overlays ---------- */
@@ -128,7 +149,7 @@
   .howto summary{cursor:pointer; font-weight:600; color:var(--marigold); margin-bottom:6px; text-align:center;}
   .howto p{margin:6px 0;}
 
-  button:focus-visible, .dbtn:focus-visible, .icon-btn:focus-visible{
+  button:focus-visible, .icon-btn:focus-visible{
     outline:2px solid var(--marigold); outline-offset:2px;
   }
 
@@ -139,6 +160,9 @@
     .score-chip{padding:3px 7px; font-size:11px;}
     .hud-title{font-size:16px;}
     .card{padding:20px 16px;}
+    .joystick-zone { width: 90px; height: 90px; }
+    .joystick-knob { width: 38px; height: 38px; }
+    .action-btn { width: 56px; height: 56px; }
   }
 </style>
 </head>
@@ -168,19 +192,15 @@
   </div>
 
   <div id="p1-touch" class="touch-panel left">
-    <div class="dpad">
-      <span></span><button class="dbtn" data-p1="up">▲</button><span></span>
-      <button class="dbtn" data-p1="left">◀</button><span></span><button class="dbtn" data-p1="right">▶</button>
-      <span></span><button class="dbtn" data-p1="down">▼</button><span></span>
+    <div class="joystick-zone" id="joy-p1">
+      <div class="joystick-knob" id="knob-p1"></div>
     </div>
     <button class="action-btn" data-p1action>●</button>
   </div>
   <div id="p2-touch" class="touch-panel right" style="display:none;">
     <button class="action-btn" data-p2action>●</button>
-    <div class="dpad">
-      <span></span><button class="dbtn" data-p2="up">▲</button><span></span>
-      <button class="dbtn" data-p2="left">◀</button><span></span><button class="dbtn" data-p2="right">▶</button>
-      <span></span><button class="dbtn" data-p2="down">▼</button><span></span>
+    <div class="joystick-zone" id="joy-p2">
+      <div class="joystick-knob" id="knob-p2"></div>
     </div>
   </div>
 
@@ -288,7 +308,7 @@
       id, label, x: 0, y: 0, r: cfg.playerR, speed,
       facing: {x: 0, y: -1}, lives: cfg.livesStart, carrying: null,
       invulnT: 0, dodgeT: 0, dodgeCdT: 0, throwCdT: 0, hitFlashT: 0,
-      isAI: false, controls: {up: false, down: false, left: false, right: false}
+      isAI: false, controls: {up: false, down: false, left: false, right: false, joyDx: 0, joyDy: 0}
     };
   }
 
@@ -505,29 +525,49 @@
   function updateHuman(p, dt){
     if(!p || !p.controls) return;
     let dx = 0, dy = 0;
-    if(p.controls.up) dy -= 1;
-    if(p.controls.down) dy += 1;
-    if(p.controls.left) dx -= 1;
-    if(p.controls.right) dx += 1;
+    let isJoy = false;
+
+    // Check Joystick Input
+    if(p.controls.joyDx || p.controls.joyDy) {
+      dx = p.controls.joyDx;
+      dy = p.controls.joyDy;
+      isJoy = true;
+    } else {
+      // Keyboard input fallback
+      if(p.controls.up) dy -= 1;
+      if(p.controls.down) dy += 1;
+      if(p.controls.left) dx -= 1;
+      if(p.controls.right) dx += 1;
+    }
     
     if(dx || dy){
-      const len = Math.hypot(dx, dy); dx /= len; dy /= len;
-      p.facing = {x: dx, y: dy};
-      const spd = p.speed * (p.dodgeT > 0 ? cfg.dodgeMultiplier : 1);
-      p.x += dx * spd * dt; p.y += dy * spd * dt;
+      const len = Math.hypot(dx, dy);
+      const nx = dx / len; 
+      const ny = dy / len;
+      
+      p.facing = {x: nx, y: ny};
+      
+      // Calculate speed: analog limits speed to distance of knob, keyboard sets to max (1)
+      const speedMult = isJoy ? Math.min(len, 1) : 1; 
+      const spd = p.speed * (p.dodgeT > 0 ? cfg.dodgeMultiplier : 1) * speedMult;
+      
+      p.x += nx * spd * dt; 
+      p.y += ny * spd * dt;
       
       if(p.dodgeT > 0 && Math.random() < 0.4){
-        S.particles.push({x: p.x, y: p.y + p.r, vx: -dx * 40, vy: -dy * 40, life: 0, maxLife: 0.25, r: rand(4, 7)});
+        S.particles.push({x: p.x, y: p.y + p.r, vx: -nx * 40, vy: -ny * 40, life: 0, maxLife: 0.25, r: rand(4, 7)});
       }
     }
     clampToArena(p);
   }
+
   function clampToArena(p){
     if(!p) return;
     const d = dist(p.x, p.y, V_CX, V_CY);
     const maxD = V_ARENA_R - p.r - 4;
     if(d > maxD && d > 0){ const k = maxD / d; p.x = V_CX + (p.x - V_CX) * k; p.y = V_CY + (p.y - V_CY) * k; }
   }
+
   function updateAI(ai, dt){
     if(!ai) return;
     const atk = getAttacker();
@@ -643,14 +683,10 @@
       const h = window.innerHeight || 600;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       
-      // Absolute Context Reset
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      
-      // Deep fallback fill
       ctx.fillStyle = '#100c1a'; 
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Aesthetic background gradient (safely mapped)
       const bg = ctx.createRadialGradient(
         (w * dpr) / 2, (h * dpr) / 2, 10,
         (w * dpr) / 2, (h * dpr) / 2, Math.max(w * dpr, h * dpr) || 1000
@@ -660,7 +696,6 @@
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Scale calculations ensuring no NaNs
       let scale = Math.min(w / V_W, h / V_H);
       if(!isFinite(scale) || scale <= 0) scale = 1;
       
@@ -668,14 +703,12 @@
       const offsetY = (h - V_H * scale) / 2;
 
       ctx.save();
-      // Apply exact virtual layout correctly
       ctx.setTransform(
         scale * dpr, 0, 
         0, scale * dpr, 
         offsetX * dpr, offsetY * dpr
       );
 
-      // Shake (with failsafes)
       if (S.shake && typeof S.shake.t === 'number' && S.shake.t > 0) {
         ctx.translate(rand(-1, 1) * (S.shake.mag || 0) * S.shake.t, rand(-1, 1) * (S.shake.mag || 0) * S.shake.t);
       }
@@ -722,7 +755,6 @@
     if(!isFinite(x) || !isFinite(y)) return;
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
     
-    // Safely draw gradient
     const grad = ctx.createLinearGradient(-(rx||1), -(ry||1), (rx||1), (ry||1));
     grad.addColorStop(0, shade[0]); grad.addColorStop(1, shade[1]);
     
@@ -863,20 +895,76 @@
     }
   });
 
-  function bindTouchDir(el, player, dir){
-    const down = function(ev){ ev.preventDefault(); ensureAudio(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'input', key: dir, val: true});
-      else if (player) player.controls[dir] = true; 
-    };
-    const up = function(ev){ ev.preventDefault(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'input', key: dir, val: false});
-      else if (player) player.controls[dir] = false; 
-    };
-    el.addEventListener('pointerdown', down);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-    el.addEventListener('pointerleave', up);
+  // Analog Virtual Joystick logic
+  function bindJoystick(zoneEl, knobEl, player) {
+    let activeId = null;
+    let lastNetworkSend = 0;
+
+    function updateJoy(ev) {
+      if(activeId !== ev.pointerId) return;
+      
+      const zRect = zoneEl.getBoundingClientRect();
+      const zRadius = zRect.width / 2;
+      const zCx = zRect.left + zRadius;
+      const zCy = zRect.top + zRadius;
+
+      let dx = ev.clientX - zCx;
+      let dy = ev.clientY - zCy;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > zRadius) {
+        dx = (dx / dist) * zRadius;
+        dy = (dy / dist) * zRadius;
+      }
+
+      knobEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+      const normX = dx / zRadius;
+      const normY = dy / zRadius;
+
+      if (S.isOnline && S.netRole === 'client') {
+        const now = performance.now();
+        // Throttle sending slightly to avoid packet overflow
+        if (now - lastNetworkSend > 30) {
+          S.conn.send({type: 'joy', x: normX, y: normY});
+          lastNetworkSend = now;
+        }
+      } else if (player) {
+        player.controls.joyDx = normX;
+        player.controls.joyDy = normY;
+      }
+    }
+
+    zoneEl.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      if (activeId !== null) return;
+      activeId = ev.pointerId;
+      zoneEl.setPointerCapture(activeId);
+      updateJoy(ev);
+      ensureAudio();
+    });
+
+    zoneEl.addEventListener('pointermove', ev => {
+      if (activeId === ev.pointerId) updateJoy(ev);
+    });
+
+    function stopJoy(ev) {
+      if (activeId !== ev.pointerId) return;
+      activeId = null;
+      knobEl.style.transform = `translate(-50%, -50%)`;
+      
+      if (S.isOnline && S.netRole === 'client') {
+        S.conn.send({type: 'joy', x: 0, y: 0});
+      } else if (player) {
+        player.controls.joyDx = 0;
+        player.controls.joyDy = 0;
+      }
+    }
+
+    zoneEl.addEventListener('pointerup', stopJoy);
+    zoneEl.addEventListener('pointercancel', stopJoy);
   }
+
   function bindTouchAction(el, player){
     el.addEventListener('pointerdown', function(ev){ ev.preventDefault(); ensureAudio(); 
       if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'action'});
@@ -904,6 +992,7 @@
       try {
         if (S.isOnline && S.netRole === 'host') {
           if (data.type === 'input' && S.players.p2) S.players.p2.controls[data.key] = data.val;
+          if (data.type === 'joy' && S.players.p2) { S.players.p2.controls.joyDx = data.x; S.players.p2.controls.joyDy = data.y; }
           if (data.type === 'action' && S.players.p2) handleAction(S.players.p2);
         } 
         else if (S.isOnline && S.netRole === 'client') {
@@ -984,12 +1073,6 @@
   }
 
   function initOnlineClient(hostId) {
-    // IMPORTANT: hide the menu buttons rather than overwriting menu-modes'
-    // innerHTML — overwriting it used to delete #btn-single/#btn-multi from
-    // the DOM, which made a later getElementById('btn-single') return null
-    // and crash the rest of DOMContentLoaded (so requestAnimationFrame(loop)
-    // never ran and the joining player's canvas stayed blank forever, even
-    // though the HUD kept updating from incoming network messages).
     const modesEl = document.getElementById('menu-modes');
     const diffEl = document.getElementById('menu-difficulty');
     if(modesEl) modesEl.style.display = 'none';
@@ -1118,7 +1201,7 @@
   document.addEventListener('DOMContentLoaded', function(){
     try {
       initPlayers();
-      resize(); // Force initial dimension load so client has S.w and S.h
+      resize();
 
       if(window.location.hash && window.location.hash.startsWith('#room-')) {
         const hostId = window.location.hash.replace('#room-', '');
@@ -1157,16 +1240,19 @@
       const btnPlayAgain = document.getElementById('btn-playagain');
       if(btnPlayAgain) btnPlayAgain.addEventListener('click', function(){ hideOverlays(); startMatch(S.mode); });
 
-      document.querySelectorAll('[data-p1]').forEach(function(el){ bindTouchDir(el, S.players.p1, el.dataset.p1); });
+      // Init analog joystick for P1
+      const joyZoneP1 = document.getElementById('joy-p1');
+      const joyKnobP1 = document.getElementById('knob-p1');
+      if (joyZoneP1 && joyKnobP1) bindJoystick(joyZoneP1, joyKnobP1, S.players.p1);
       document.querySelectorAll('[data-p1action]').forEach(function(el){ bindTouchAction(el, S.players.p1); });
 
-      document.querySelectorAll('[data-p2]').forEach(function(el){ bindTouchDir(el, S.players.p2, el.dataset.p2); });
+      // Init analog joystick for P2
+      const joyZoneP2 = document.getElementById('joy-p2');
+      const joyKnobP2 = document.getElementById('knob-p2');
+      if (joyZoneP2 && joyKnobP2) bindJoystick(joyZoneP2, joyKnobP2, S.players.p2);
       document.querySelectorAll('[data-p2action]').forEach(function(el){ bindTouchAction(el, S.players.p2); });
+
     } catch(setupErr) {
-      // Never let a setup-time error (e.g. a missing element) prevent the
-      // render loop from starting — that's exactly what caused the blank
-      // canvas bug: one throw here used to skip requestAnimationFrame(loop)
-      // entirely.
       console.error('Setup error (continuing anyway):', setupErr);
     } finally {
       requestAnimationFrame(loop);
