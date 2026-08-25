@@ -77,10 +77,14 @@
 
   /* ---------- touch controls ---------- */
   .touch-panel{
-    position:absolute; bottom:70px; display:flex; align-items:center; gap:20px; z-index:5;
+    position:absolute; bottom:70px; left:30px; right:30px; 
+    display:flex; align-items:center; justify-content:space-between; 
+    z-index:5; pointer-events:none; /* Let touches pass through the center */
   }
-  .touch-panel.left{left:20px;}
-  .touch-panel.right{right:20px;}
+  
+  .joystick-zone, .action-btn {
+    pointer-events: auto; /* Re-enable touches for the controls */
+  }
 
   /* Analog Joystick */
   .joystick-zone {
@@ -160,6 +164,7 @@
     .score-chip{padding:3px 7px; font-size:11px;}
     .hud-title{font-size:16px;}
     .card{padding:20px 16px;}
+    .touch-panel{left:20px; right:20px;}
     .joystick-zone { width: 90px; height: 90px; }
     .joystick-knob { width: 38px; height: 38px; }
     .action-btn { width: 56px; height: 56px; }
@@ -191,17 +196,18 @@
     <div id="hud-hint" class="hud-hint">Face the stack and press ACTION to throw</div>
   </div>
 
-  <div id="p1-touch" class="touch-panel left">
+  <div id="p1-touch" class="touch-panel">
     <div class="joystick-zone" id="joy-p1">
       <div class="joystick-knob" id="knob-p1"></div>
     </div>
     <button class="action-btn" data-p1action>●</button>
   </div>
-  <div id="p2-touch" class="touch-panel right" style="display:none;">
-    <button class="action-btn" data-p2action>●</button>
+  
+  <div id="p2-touch" class="touch-panel" style="display:none;">
     <div class="joystick-zone" id="joy-p2">
       <div class="joystick-knob" id="knob-p2"></div>
     </div>
+    <button class="action-btn" data-p2action>●</button>
   </div>
 
   <div id="overlay-menu" class="overlay visible">
