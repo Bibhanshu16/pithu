@@ -31,7 +31,7 @@
     color:var(--chalk);
   }
   #app{position:fixed; inset:0; width:100%; height:100%; user-select:none;}
-  #stage{position:absolute; inset:0;}
+  #stage{position:absolute; inset:0; background:var(--dusk-indigo-2);}
   #game{display:block; width:100%; height:100%;}
 
   /* ---------- HUD bars ---------- */
@@ -188,6 +188,7 @@
     <div class="card">
       <div class="card-title">पिठू<span>PITHU · SEVEN STONES</span></div>
       <div class="card-sub">A courtyard classic — knock down the stack, then rebuild it before you get hit.</div>
+      <div id="conn-status" class="card-sub" style="display:none; color:var(--marigold); font-weight:600;"></div>
       <div id="menu-modes" class="menu-row">
         <button class="big-btn" id="btn-single">Single Player<small>You vs the CPU</small></button>
         <button class="big-btn" id="btn-multi">Online Multiplayer<small>Copy link and send to a friend</small></button>
@@ -234,306 +235,326 @@
 <script>
 (function(){
   'use strict';
+  
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
+  // --- VIRTUAL GAME COORDINATES (Bulletproof sizing) ---
+  const V_W = 1000;
+  const V_H = 1000;
+  const V_CX = 500;
+  const V_CY = 500;
+  const V_ARENA_R = 380; 
+
   const cfg = {
-    playerR:15, ballR:6,
-    attackerSpeed:230, p2Speed:210,
-    defenderSpeedByDiff:{easy:150,normal:185,hard:225},
-    attackerThrowSpeed:480, attackerThrowCooldown:0.45,
-    defenderThrowSpeedByDiff:{easy:260,normal:330,hard:400},
-    defenderThrowCooldownByDiff:{easy:1.6,normal:1.15,hard:0.75},
-    p2ThrowSpeed:400, p2ThrowCooldown:0.9,
-    aimErrorByDiff:{easy:0.42,normal:0.2,hard:0.06},
-    dodgeMultiplier:2.1, dodgeDuration:0.22, dodgeCooldown:1.3,
-    livesStart:3, stonesTotal:7, roundsToWin:3,
-    guardRadius:66, hitInvulnAfter:0.6, aiThrowRangeMul:1.3
+    playerR: 20, ballR: 8,
+    attackerSpeed: 280, p2Speed: 260,
+    defenderSpeedByDiff: {easy: 180, normal: 230, hard: 280},
+    attackerThrowSpeed: 600, attackerThrowCooldown: 0.45,
+    defenderThrowSpeedByDiff: {easy: 320, normal: 420, hard: 520},
+    defenderThrowCooldownByDiff: {easy: 1.6, normal: 1.15, hard: 0.75},
+    p2ThrowSpeed: 500, p2ThrowCooldown: 0.9,
+    aimErrorByDiff: {easy: 0.42, normal: 0.2, hard: 0.06},
+    dodgeMultiplier: 2.1, dodgeDuration: 0.22, dodgeCooldown: 1.3,
+    livesStart: 3, stonesTotal: 7, roundsToWin: 3,
+    guardRadius: 80, hitInvulnAfter: 0.6, aiThrowRangeMul: 1.3
   };
 
-  const COLORS = { attacker:'#E8A23D', defender:'#1B6E6A' };
+  const COLORS = { attacker: '#E8A23D', defender: '#1B6E6A' };
 
-  function rand(a,b){ return a+Math.random()*(b-a); }
-  function dist(x1,y1,x2,y2){ return Math.hypot(x1-x2,y1-y2); }
-  function lerp(a,b,t){ return a+(b-a)*t; }
-  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+  function rand(a,b){ return a + Math.random() * (b - a); }
+  function dist(x1,y1,x2,y2){ return Math.hypot(x1 - x2, y1 - y2); }
+  function lerp(a,b,t){ return a + (b - a) * t; }
 
+  // App State
   const S = {
-    screen:'menu', mode:null, difficulty:'normal',
-    phase:'aim', attackerId:'p1',
-    scores:{p1:0,p2:0}, round:1, winnerId:null,
-    muted:false,
-    w:0,h:0,cx:0,cy:0,arenaR:0,
-    players:{p1:null,p2:null},
-    balls:[], stones:[], placedCount:0,
-    particles:[], shake:{t:0,mag:0},
-    lastTime:0, time:0,
-    toastTimer:null,
+    screen: 'menu', mode: null, difficulty: 'normal',
+    phase: 'aim', attackerId: 'p1',
+    scores: {p1:0, p2:0}, round: 1, winnerId: null,
+    muted: false,
+    players: {p1: null, p2: null},
+    balls: [], stones: [], placedCount: 0,
+    particles: [], shake: {t:0, mag:0},
+    lastTime: 0, time: 0,
+    toastTimer: null,
     
     // Network properties
-    peer:null, conn:null, isOnline:false, netRole:'host',
-    audioQueue:[], toastQueue:[]
+    peer: null, conn: null, isOnline: false, netRole: 'host', netTimer: 0,
+    audioQueue: [], toastQueue: []
   };
 
-  function newPlayer(id,speed,label){
-    return {id,label,x:0,y:0,r:cfg.playerR,speed,
-      facing:{x:0,y:-1}, lives:cfg.livesStart, carrying:null,
-      invulnT:0, dodgeT:0, dodgeCdT:0, throwCdT:0, hitFlashT:0,
-      isAI:false, controls:{up:false,down:false,left:false,right:false}};
+  function newPlayer(id, speed, label){
+    return {
+      id, label, x: 0, y: 0, r: cfg.playerR, speed,
+      facing: {x: 0, y: -1}, lives: cfg.livesStart, carrying: null,
+      invulnT: 0, dodgeT: 0, dodgeCdT: 0, throwCdT: 0, hitFlashT: 0,
+      isAI: false, controls: {up: false, down: false, left: false, right: false}
+    };
   }
+
   function initPlayers(){
     S.players.p1 = newPlayer('p1', cfg.attackerSpeed, 'P1');
     S.players.p2 = newPlayer('p2', cfg.p2Speed, 'P2');
   }
+
   function getAttacker(){ return S.players[S.attackerId]; }
-  function getDefender(){ return S.players[S.attackerId==='p1'?'p2':'p1']; }
-  function otherOf(p){ return p.id==='p1'? S.players.p2 : S.players.p1; }
-  function roleName(id){ if(S.mode==='single') return id==='p1' ? 'You':'CPU'; return id.toUpperCase(); }
+  function getDefender(){ return S.players[S.attackerId === 'p1' ? 'p2' : 'p1']; }
+  function otherOf(p){ return p.id === 'p1' ? S.players.p2 : S.players.p1; }
+  function roleName(id){ if(S.mode === 'single') return id === 'p1' ? 'You' : 'CPU'; return id.toUpperCase(); }
+
+  /* ---------- display sizing (Runs natively without layout thrashing) ---------- */
+  function resize(){
+    const w = window.innerWidth || 800;
+    const h = window.innerHeight || 600;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+  }
+  window.addEventListener('resize', resize);
 
   /* ---------- audio ---------- */
-  let actx=null;
+  let actx = null;
   function ensureAudio(){
-    if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
-    if(actx && actx.state==='suspended'){ actx.resume(); }
+    if(!actx){ try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){} }
+    if(actx && actx.state === 'suspended'){ actx.resume(); }
   }
-  function beep(freq,dur,type,gainStart){
+  function beep(freq, dur, type, gainStart){
     if(S.muted || !actx) return;
     try{
       const o = actx.createOscillator(); const g = actx.createGain();
-      o.type=type||'sine'; o.frequency.value=freq;
-      g.gain.value = gainStart||0.15;
-      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+dur);
+      o.type = type || 'sine'; o.frequency.value = freq;
+      g.gain.value = gainStart || 0.15;
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
       o.connect(g); g.connect(actx.destination);
-      o.start(); o.stop(actx.currentTime+dur);
+      o.start(); o.stop(actx.currentTime + dur);
     }catch(e){}
   }
   function playSound(name){
     if (S.isOnline && S.netRole === 'host') S.audioQueue.push(name);
     if(!actx) return;
     switch(name){
-      case 'throw': beep(320,0.12,'triangle',0.12); break;
-      case 'knock': beep(140,0.35,'sawtooth',0.2); beep(90,0.4,'square',0.12); break;
-      case 'block': beep(500,0.08,'square',0.1); break;
-      case 'hit': beep(120,0.25,'sawtooth',0.22); break;
-      case 'pick': beep(660,0.08,'sine',0.1); break;
-      case 'place': beep(500,0.1,'triangle',0.14); break;
-      case 'dash': beep(800,0.08,'sine',0.08); break;
-      case 'win': beep(660,0.15,'triangle',0.18); setTimeout(()=>beep(880,0.25,'triangle',0.18),140); break;
-      case 'lose': beep(200,0.3,'sawtooth',0.18); break;
+      case 'throw': beep(320, 0.12, 'triangle', 0.12); break;
+      case 'knock': beep(140, 0.35, 'sawtooth', 0.2); beep(90, 0.4, 'square', 0.12); break;
+      case 'block': beep(500, 0.08, 'square', 0.1); break;
+      case 'hit': beep(120, 0.25, 'sawtooth', 0.22); break;
+      case 'pick': beep(660, 0.08, 'sine', 0.1); break;
+      case 'place': beep(500, 0.1, 'triangle', 0.14); break;
+      case 'dash': beep(800, 0.08, 'sine', 0.08); break;
+      case 'win': beep(660, 0.15, 'triangle', 0.18); setTimeout(() => beep(880, 0.25, 'triangle', 0.18), 140); break;
+      case 'lose': beep(200, 0.3, 'sawtooth', 0.18); break;
     }
-  }
-
-  /* ---------- geometry ---------- */
-  function resize(){
-    // Use window variables for a robust full-screen rendering regardless of parent container quirks
-    S.w = window.innerWidth;
-    S.h = window.innerHeight;
-    const dpr = Math.min(2, window.devicePixelRatio||1);
-    canvas.width = Math.round(S.w*dpr);
-    canvas.height = Math.round(S.h*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    S.cx = S.w/2; S.cy = S.h*0.54;
-    S.arenaR = clamp(Math.min(S.w,S.h)*0.42, 130, 420);
   }
 
   /* ---------- stones ---------- */
   function makeStack(){
-    const arr=[];
-    for(let i=0;i<7;i++){
-      arr.push({i, state:'stacked', x:S.cx, y:S.cy-i*6, z:0, rot:rand(-0.15,0.15), landed:true, placedIndex:null});
+    const arr = [];
+    for(let i=0; i<7; i++){
+      arr.push({i, state: 'stacked', x: V_CX, y: V_CY - i * 8, z: 0, rot: rand(-0.15, 0.15), landed: true, placedIndex: null});
     }
     return arr;
   }
   function knockStack(){
-    playSound('knock'); shake(14,0.4);
-    const baseAngle = rand(0,Math.PI*2);
-    S.stones.forEach((s,idx)=>{
-      const angle = baseAngle + (idx/7)*Math.PI*2 + rand(-0.3,0.3);
-      const r = rand(S.arenaR*0.28, S.arenaR*0.78);
-      s.state='flying';
-      s.from={x:S.cx,y:S.cy-idx*6};
-      s.to={x:S.cx+Math.cos(angle)*r, y:S.cy+Math.sin(angle)*r};
-      s.x=s.from.x; s.y=s.from.y;
-      s.maxZ=rand(30, 70); 
-      s.z=0;
-      s.animT=0; s.animDur=rand(0.35,0.6);
-      s.landed=false;
+    playSound('knock'); shake(14, 0.4);
+    const baseAngle = rand(0, Math.PI * 2);
+    (S.stones || []).forEach((s, idx) => {
+      const angle = baseAngle + (idx / 7) * Math.PI * 2 + rand(-0.3, 0.3);
+      const r = rand(V_ARENA_R * 0.28, V_ARENA_R * 0.78);
+      s.state = 'flying';
+      s.from = {x: V_CX, y: V_CY - idx * 8};
+      s.to = {x: V_CX + Math.cos(angle) * r, y: V_CY + Math.sin(angle) * r};
+      s.x = s.from.x; s.y = s.from.y;
+      s.maxZ = rand(40, 90);
+      s.z = 0;
+      s.animT = 0; s.animDur = rand(0.35, 0.6);
+      s.landed = false;
     });
-    S.phase='rebuild';
+    S.phase = 'rebuild';
   }
   function updateStones(dt){
-    S.stones.forEach(s=>{
-      if(s.state==='flying'){
-        s.animT+=dt;
-        const t=Math.min(1,s.animT/s.animDur);
-        const e=1-Math.pow(1-t,3); 
-        s.x=lerp(s.from.x,s.to.x,e);
-        s.y=lerp(s.from.y,s.to.y,e);
-        s.z=Math.sin(t*Math.PI) * s.maxZ; 
-        if(t>=1){ 
-          s.state='scattered'; s.landed=true; s.z=0; 
-          spawnDust(s.x,s.y, 6); 
+    (S.stones || []).forEach(s => {
+      if(s.state === 'flying'){
+        s.animT += dt;
+        const t = Math.min(1, s.animT / s.animDur);
+        const e = 1 - Math.pow(1 - t, 3);
+        s.x = lerp(s.from.x, s.to.x, e);
+        s.y = lerp(s.from.y, s.to.y, e);
+        s.z = Math.sin(t * Math.PI) * s.maxZ;
+        if(t >= 1){
+          s.state = 'scattered'; s.landed = true; s.z = 0;
+          spawnDust(s.x, s.y, 6);
         }
       }
     });
   }
   function updatePickupDeposit(){
     const atk = getAttacker();
-    if(S.phase!=='rebuild') return;
-    if(atk.carrying==null){
-      for(const s of S.stones){
-        if(s.state==='scattered' && s.landed && dist(atk.x,atk.y,s.x,s.y) < atk.r+12){
-          s.state='carried'; atk.carrying=s.i; playSound('pick'); break;
+    if(!atk || S.phase !== 'rebuild') return;
+    if(atk.carrying == null){
+      for(const s of (S.stones || [])){
+        if(s.state === 'scattered' && s.landed && dist(atk.x, atk.y, s.x, s.y) < atk.r + 14){
+          s.state = 'carried'; atk.carrying = s.i; playSound('pick'); break;
         }
       }
     } else {
-      const s = S.stones.find(st=>st.i===atk.carrying);
-      if(!s){ atk.carrying=null; return; }
-      if(dist(atk.x,atk.y,S.cx,S.cy) < 34){
-        s.state='placed'; s.placedIndex=S.placedCount; S.placedCount++;
-        atk.carrying=null; playSound('place'); shake(5,0.15); spawnDust(S.cx,S.cy, 8);
-        if(S.placedCount>=cfg.stonesTotal){ endRound('attacker'); }
+      const s = (S.stones || []).find(st => st.i === atk.carrying);
+      if(!s){ atk.carrying = null; return; }
+      if(dist(atk.x, atk.y, V_CX, V_CY) < 40){
+        s.state = 'placed'; s.placedIndex = S.placedCount; S.placedCount++;
+        atk.carrying = null; playSound('place'); shake(5, 0.15); spawnDust(V_CX, V_CY, 8);
+        if(S.placedCount >= cfg.stonesTotal){ endRound('attacker'); }
       } else {
-        s.x=atk.x; s.y=atk.y-24;
+        s.x = atk.x; s.y = atk.y - 30;
       }
     }
   }
 
   /* ---------- particles ---------- */
-  function spawnDust(x,y, count=8){
-    for(let i=0;i<count;i++){
-      S.particles.push({x,y,vx:rand(-60,60),vy:rand(-60,60),life:0,maxLife:rand(0.3,0.6),r:rand(2,5)});
+  function spawnDust(x, y, count=8){
+    for(let i=0; i<count; i++){
+      S.particles.push({x, y, vx: rand(-80, 80), vy: rand(-80, 80), life: 0, maxLife: rand(0.3, 0.6), r: rand(3, 6)});
     }
   }
   function updateParticles(dt){
-    for(let i=S.particles.length-1;i>=0;i--){
-      const p=S.particles[i];
-      p.life+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.9; p.vy*=0.9;
-      if(p.life>=p.maxLife) S.particles.splice(i,1);
+    for(let i=(S.particles || []).length-1; i>=0; i--){
+      const p = S.particles[i];
+      p.life += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.9; p.vy *= 0.9;
+      if(p.life >= p.maxLife) S.particles.splice(i, 1);
     }
   }
-  function shake(mag,t){ S.shake.mag=mag; S.shake.t=t; }
+  function shake(mag, t){ S.shake = {mag: mag || 0, t: t || 0}; }
 
   /* ---------- balls ---------- */
-  function throwBall(player,speed,cooldown){
-    player.throwCdT=cooldown;
-    const dx=player.facing.x, dy=player.facing.y;
+  function throwBall(player, speed, cooldown){
+    if(!player) return;
+    player.throwCdT = cooldown;
+    const dx = player.facing.x || 0, dy = player.facing.y || 1;
     S.balls.push({
-      x:player.x+dx*(player.r+10), y:player.y+dy*(player.r+10), 
-      vx:dx*speed, vy:dy*speed, r:cfg.ballR, owner:player.id,
-      history:[] 
+      x: player.x + dx * (player.r + 12), y: player.y + dy * (player.r + 12),
+      vx: dx * speed, vy: dy * speed, r: cfg.ballR, owner: player.id,
+      history: []
     });
     playSound('throw');
   }
   function handleAction(player){
-    if(S.screen!=='playing') return;
-    const isAttacker = player.id===S.attackerId;
+    if(S.screen !== 'playing' || !player) return;
+    const isAttacker = player.id === S.attackerId;
     if(isAttacker){
-      if(S.phase==='aim'){
-        if(player.throwCdT<=0) throwBall(player, cfg.attackerThrowSpeed, cfg.attackerThrowCooldown);
-      } else if(S.phase==='rebuild'){
-        if(player.dodgeCdT<=0){ player.dodgeT=cfg.dodgeDuration; player.dodgeCdT=cfg.dodgeCooldown; playSound('dash'); }
+      if(S.phase === 'aim'){
+        if(player.throwCdT <= 0) throwBall(player, cfg.attackerThrowSpeed, cfg.attackerThrowCooldown);
+      } else if(S.phase === 'rebuild'){
+        if(player.dodgeCdT <= 0){ player.dodgeT = cfg.dodgeDuration; player.dodgeCdT = cfg.dodgeCooldown; playSound('dash'); }
       }
     } else {
-      if(S.phase==='rebuild' && player.throwCdT<=0){
-        const speed = player.isAI? cfg.defenderThrowSpeedByDiff[S.difficulty] : cfg.p2ThrowSpeed;
-        const cd = player.isAI? cfg.defenderThrowCooldownByDiff[S.difficulty] : cfg.p2ThrowCooldown;
+      if(S.phase === 'rebuild' && player.throwCdT <= 0){
+        const speed = player.isAI ? cfg.defenderThrowSpeedByDiff[S.difficulty] : cfg.p2ThrowSpeed;
+        const cd = player.isAI ? cfg.defenderThrowCooldownByDiff[S.difficulty] : cfg.p2ThrowCooldown;
         throwBall(player, speed, cd);
       }
     }
   }
-  function flashHit(p){ p.hitFlashT=0.3; }
+  function flashHit(p){ if(p) p.hitFlashT = 0.3; }
 
   function updateBalls(dt){
-    for(let i=S.balls.length-1;i>=0;i--){
-      const b=S.balls[i];
+    for(let i=(S.balls || []).length-1; i>=0; i--){
+      const b = S.balls[i];
+      if(!b) continue;
+      
+      b.history = b.history || [];
       b.history.push({x: b.x, y: b.y});
       if(b.history.length > 6) b.history.shift();
 
-      b.x+=b.vx*dt; b.y+=b.vy*dt;
-      let remove=false;
-      if(dist(b.x,b.y,S.cx,S.cy) > S.arenaR+60) remove=true;
+      b.x += (b.vx || 0) * dt; b.y += (b.vy || 0) * dt;
+      let remove = false;
+      if(dist(b.x, b.y, V_CX, V_CY) > V_ARENA_R + 80) remove = true;
       
       if(!remove && b.owner !== 'neutral'){
         const thrower = S.players[b.owner];
-        const target = thrower.id===S.attackerId ? getDefender() : getAttacker();
-        if(dist(b.x,b.y,target.x,target.y) < b.r+target.r){
-          if(target.id===S.attackerId){
-            if(target.invulnT<=0 && target.dodgeT<=0){
-              target.lives--; playSound('hit'); shake(12,0.35); flashHit(target); spawnDust(target.x, target.y, 12);
+        const target = thrower && thrower.id === S.attackerId ? getDefender() : getAttacker();
+        
+        if(target && dist(b.x, b.y, target.x, target.y) < b.r + target.r){
+          if(target.id === S.attackerId){
+            if(target.invulnT <= 0 && target.dodgeT <= 0){
+              target.lives--; playSound('hit'); shake(12, 0.35); flashHit(target); spawnDust(target.x, target.y, 12);
               target.x += b.vx * 0.04;
               target.y += b.vy * 0.04;
               
-              if(target.carrying!=null){ const s=S.stones.find(st=>st.i===target.carrying); if(s){ s.state='scattered'; s.landed=true; } target.carrying=null; }
-              target.invulnT=cfg.hitInvulnAfter;
-              if(target.lives<=0) endRound('defender');
-              remove=true;
+              if(target.carrying != null){ const s = (S.stones || []).find(st => st.i === target.carrying); if(s){ s.state = 'scattered'; s.landed = true; } target.carrying = null; }
+              target.invulnT = cfg.hitInvulnAfter;
+              if(target.lives <= 0) endRound('defender');
+              remove = true;
             }
           } else {
             playSound('block');
             b.vx *= -0.4;
             b.vy *= -0.4;
             b.owner = 'neutral';
-            remove = false; 
+            remove = false;
             spawnDust(b.x, b.y, 4);
           }
         }
-        if(!remove && S.phase==='aim' && thrower.id===S.attackerId){
-          if(dist(b.x,b.y,S.cx,S.cy) < b.r+34){ knockStack(); remove=true; }
+        if(!remove && S.phase === 'aim' && thrower && thrower.id === S.attackerId){
+          if(dist(b.x, b.y, V_CX, V_CY) < b.r + 40){ knockStack(); remove = true; }
         }
       }
-      if(remove) S.balls.splice(i,1);
+      if(remove) S.balls.splice(i, 1);
     }
   }
 
   /* ---------- movement ---------- */
-  function updateHuman(p,dt){
-    let dx=0,dy=0;
-    if(p.controls.up) dy-=1;
-    if(p.controls.down) dy+=1;
-    if(p.controls.left) dx-=1;
-    if(p.controls.right) dx+=1;
-    if(dx||dy){
-      const len=Math.hypot(dx,dy); dx/=len; dy/=len;
-      p.facing={x:dx,y:dy};
-      const spd = p.speed*(p.dodgeT>0?cfg.dodgeMultiplier:1);
-      p.x+=dx*spd*dt; p.y+=dy*spd*dt;
+  function updateHuman(p, dt){
+    if(!p || !p.controls) return;
+    let dx = 0, dy = 0;
+    if(p.controls.up) dy -= 1;
+    if(p.controls.down) dy += 1;
+    if(p.controls.left) dx -= 1;
+    if(p.controls.right) dx += 1;
+    
+    if(dx || dy){
+      const len = Math.hypot(dx, dy); dx /= len; dy /= len;
+      p.facing = {x: dx, y: dy};
+      const spd = p.speed * (p.dodgeT > 0 ? cfg.dodgeMultiplier : 1);
+      p.x += dx * spd * dt; p.y += dy * spd * dt;
       
       if(p.dodgeT > 0 && Math.random() < 0.4){
-        S.particles.push({x:p.x, y:p.y+p.r, vx:-dx*30, vy:-dy*30, life:0, maxLife:0.25, r:rand(3,5)});
+        S.particles.push({x: p.x, y: p.y + p.r, vx: -dx * 40, vy: -dy * 40, life: 0, maxLife: 0.25, r: rand(4, 7)});
       }
     }
     clampToArena(p);
   }
   function clampToArena(p){
-    const d=dist(p.x,p.y,S.cx,S.cy);
-    const maxD=S.arenaR-p.r-4;
-    if(d>maxD && d>0){ const k=maxD/d; p.x=S.cx+(p.x-S.cx)*k; p.y=S.cy+(p.y-S.cy)*k; }
+    if(!p) return;
+    const d = dist(p.x, p.y, V_CX, V_CY);
+    const maxD = V_ARENA_R - p.r - 4;
+    if(d > maxD && d > 0){ const k = maxD / d; p.x = V_CX + (p.x - V_CX) * k; p.y = V_CY + (p.y - V_CY) * k; }
   }
-  function updateAI(ai,dt){
-    const atk=getAttacker();
-    let tx,ty;
-    if(S.phase==='aim'){
-      const dx=atk.x-S.cx, dy=atk.y-S.cy; const len=Math.hypot(dx,dy)||1;
-      tx=S.cx+(dx/len)*cfg.guardRadius; ty=S.cy+(dy/len)*cfg.guardRadius;
+  function updateAI(ai, dt){
+    if(!ai) return;
+    const atk = getAttacker();
+    if(!atk) return;
+    
+    let tx, ty;
+    if(S.phase === 'aim'){
+      const dx = atk.x - V_CX, dy = atk.y - V_CY; const len = Math.hypot(dx, dy) || 1;
+      tx = V_CX + (dx / len) * cfg.guardRadius; ty = V_CY + (dy / len) * cfg.guardRadius;
     } else {
-      const dx=ai.x-atk.x, dy=ai.y-atk.y; const len=Math.hypot(dx,dy)||1;
-      const desired=210;
-      tx=atk.x+(dx/len)*desired; ty=atk.y+(dy/len)*desired;
+      const dx = ai.x - atk.x, dy = ai.y - atk.y; const len = Math.hypot(dx, dy) || 1;
+      const desired = 250;
+      tx = atk.x + (dx / len) * desired; ty = atk.y + (dy / len) * desired;
     }
-    const mx=tx-ai.x, my=ty-ai.y; const mlen=Math.hypot(mx,my);
-    if(mlen>4){
-      const spd=cfg.defenderSpeedByDiff[S.difficulty];
-      ai.x+=(mx/mlen)*spd*dt; ai.y+=(my/mlen)*spd*dt;
+    const mx = tx - ai.x, my = ty - ai.y; const mlen = Math.hypot(mx, my);
+    if(mlen > 4){
+      const spd = cfg.defenderSpeedByDiff[S.difficulty] || 150;
+      ai.x += (mx / mlen) * spd * dt; ai.y += (my / mlen) * spd * dt;
     }
-    const fx=atk.x-ai.x, fy=atk.y-ai.y; const flen=Math.hypot(fx,fy)||1;
-    ai.facing={x:fx/flen,y:fy/flen};
+    const fx = atk.x - ai.x, fy = atk.y - ai.y; const flen = Math.hypot(fx, fy) || 1;
+    ai.facing = {x: fx / flen, y: fy / flen};
     clampToArena(ai);
-    if(S.phase==='rebuild' && ai.throwCdT<=0){
-      if(flen < S.arenaR*cfg.aiThrowRangeMul){
-        const err=rand(-cfg.aimErrorByDiff[S.difficulty],cfg.aimErrorByDiff[S.difficulty]);
-        const ang=Math.atan2(fy,fx)+err;
-        ai.facing={x:Math.cos(ang),y:Math.sin(ang)};
+    if(S.phase === 'rebuild' && ai.throwCdT <= 0){
+      if(flen < V_ARENA_R * cfg.aiThrowRangeMul){
+        const err = rand(-cfg.aimErrorByDiff[S.difficulty], cfg.aimErrorByDiff[S.difficulty]);
+        const ang = Math.atan2(fy, fx) + err;
+        ai.facing = {x: Math.cos(ang), y: Math.sin(ang)};
         throwBall(ai, cfg.defenderThrowSpeedByDiff[S.difficulty], cfg.defenderThrowCooldownByDiff[S.difficulty]);
       }
     }
@@ -541,311 +562,387 @@
 
   /* ---------- rounds ---------- */
   function startRound(){
-    S.phase='aim'; S.placedCount=0; S.balls=[]; S.particles=[];
-    [S.players.p1,S.players.p2].forEach(p=>{
-      p.invulnT=0; p.dodgeT=0; p.dodgeCdT=0; p.throwCdT=0; p.hitFlashT=0; p.carrying=null;
+    S.phase = 'aim'; S.placedCount = 0; S.balls = []; S.particles = [];
+    [S.players.p1, S.players.p2].forEach(p => {
+      if(!p) return;
+      p.invulnT = 0; p.dodgeT = 0; p.dodgeCdT = 0; p.throwCdT = 0; p.hitFlashT = 0; p.carrying = null;
     });
-    const atk=getAttacker(), def=getDefender();
-    atk.x=S.cx; atk.y=S.cy+S.arenaR*0.62; atk.facing={x:0,y:-1}; atk.lives=cfg.livesStart;
-    def.x=S.cx; def.y=S.cy-S.arenaR*0.55; def.facing={x:0,y:1};
-    S.stones=makeStack();
-    showToast('Round '+S.round+' — '+roleName(S.attackerId)+' attacks, '+roleName(def.id)+' defends', 1.5);
+    const atk = getAttacker(), def = getDefender();
+    if(atk) { atk.x = V_CX; atk.y = V_CY + V_ARENA_R * 0.62; atk.facing = {x: 0, y: -1}; atk.lives = cfg.livesStart; }
+    if(def) { def.x = V_CX; def.y = V_CY - V_ARENA_R * 0.55; def.facing = {x: 0, y: 1}; }
+    S.stones = makeStack();
+    showToast('Round ' + (S.round||1) + ' — ' + roleName(S.attackerId) + ' attacks, ' + roleName(def?def.id:'p2') + ' defends', 1.5);
   }
   function endRound(winnerRole){
-    const winnerId = winnerRole==='attacker' ? S.attackerId : otherOf(getAttacker()).id;
-    S.scores[winnerId]++;
-    playSound(winnerRole==='attacker'?'win':'lose');
+    const winnerId = winnerRole === 'attacker' ? S.attackerId : otherOf(getAttacker()).id;
+    if(!S.scores) S.scores = {p1:0, p2:0};
+    S.scores[winnerId] = (S.scores[winnerId] || 0) + 1;
+    playSound(winnerRole === 'attacker' ? 'win' : 'lose');
     updateHUD();
     if(S.scores[winnerId] >= cfg.roundsToWin){
       S.winnerId = winnerId;
-      S.screen='gameOver';
+      S.screen = 'gameOver';
       showGameOver(winnerId);
     } else {
-      S.screen='roundEnd';
-      const msg = winnerRole==='attacker' ? 'PITHU! '+roleName(winnerId)+' rebuilt the stack!' : roleName(winnerId)+' wins the round!';
+      S.screen = 'roundEnd';
+      const msg = winnerRole === 'attacker' ? 'PITHU! ' + roleName(winnerId) + ' rebuilt the stack!' : roleName(winnerId) + ' wins the round!';
       showToast(msg, 1.9, function(){
-        S.round++;
-        if(S.mode==='multi') S.attackerId = S.attackerId==='p1'?'p2':'p1';
+        S.round = (S.round || 1) + 1;
+        if(S.mode === 'multi') S.attackerId = S.attackerId === 'p1' ? 'p2' : 'p1';
         startRound();
-        S.screen='playing';
+        S.screen = 'playing';
       });
     }
   }
 
   /* ---------- toast ---------- */
-  const toastEl=document.getElementById('toast');
-  function showToast(text,duration,cb){
+  const toastEl = document.getElementById('toast');
+  function showToast(text, duration, cb){
     if (S.isOnline && S.netRole === 'host') S.toastQueue.push({text, duration});
-    
-    toastEl.textContent=text; toastEl.classList.add('show');
+    toastEl.textContent = text; toastEl.classList.add('show');
     if(S.toastTimer) clearTimeout(S.toastTimer);
-    S.toastTimer=setTimeout(function(){ toastEl.classList.remove('show'); if(cb) cb(); }, duration*1000);
+    S.toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); if(cb) cb(); }, duration * 1000);
   }
 
   /* ---------- HUD ---------- */
-  const hudRound=document.getElementById('hud-round');
-  const hudScoreP1=document.getElementById('score-p1');
-  const hudScoreP2=document.getElementById('score-p2');
-  const hudNameP1=document.getElementById('name-p1');
-  const hudNameP2=document.getElementById('name-p2');
-  const hudLives=document.getElementById('hud-lives');
-  const hudProgress=document.getElementById('hud-progress');
-  const hudHint=document.getElementById('hud-hint');
+  const hudRound = document.getElementById('hud-round');
+  const hudScoreP1 = document.getElementById('score-p1');
+  const hudScoreP2 = document.getElementById('score-p2');
+  const hudNameP1 = document.getElementById('name-p1');
+  const hudNameP2 = document.getElementById('name-p2');
+  const hudLives = document.getElementById('hud-lives');
+  const hudProgress = document.getElementById('hud-progress');
+  const hudHint = document.getElementById('hud-hint');
 
   function updateHUD(){
-    hudRound.textContent = 'Round '+S.round;
-    hudScoreP1.textContent = S.scores.p1 || 0;
-    hudScoreP2.textContent = S.scores.p2 || 0;
-    hudNameP1.textContent = S.mode==='single' ? 'You' : 'P1';
-    hudNameP2.textContent = S.mode==='single' ? 'CPU' : 'P2';
-    const atk=getAttacker();
-    if(atk && typeof atk.lives !== 'undefined'){
-      hudLives.textContent = '●'.repeat(Math.max(0,atk.lives))+'○'.repeat(Math.max(0,cfg.livesStart-atk.lives));
-      hudProgress.textContent = (S.placedCount||0)+' / '+cfg.stonesTotal+' stones';
-    }
-    if(S.phase==='aim'){
-      hudHint.textContent = roleName(S.attackerId)+': line up with the stack and press ACTION to throw';
-    } else {
-      hudHint.textContent = roleName(S.attackerId)+': rebuild the stack!  '+roleName(getDefender().id)+': press ACTION to throw';
-    }
+    try {
+      hudRound.textContent = 'Round ' + (S.round || 1);
+      hudScoreP1.textContent = (S.scores && S.scores.p1) || 0;
+      hudScoreP2.textContent = (S.scores && S.scores.p2) || 0;
+      hudNameP1.textContent = S.mode === 'single' ? 'You' : 'P1';
+      hudNameP2.textContent = S.mode === 'single' ? 'CPU' : 'P2';
+      const atk = getAttacker();
+      if(atk && typeof atk.lives !== 'undefined'){
+        hudLives.textContent = '●'.repeat(Math.max(0, atk.lives)) + '○'.repeat(Math.max(0, cfg.livesStart - atk.lives));
+        hudProgress.textContent = (S.placedCount || 0) + ' / ' + cfg.stonesTotal + ' stones';
+      }
+      const def = getDefender() || {id: 'p2'};
+      if(S.phase === 'aim'){
+        hudHint.textContent = roleName(S.attackerId) + ': line up with the stack and press ACTION to throw';
+      } else {
+        hudHint.textContent = roleName(S.attackerId) + ': rebuild the stack!  ' + roleName(def.id) + ': press ACTION to throw';
+      }
+    } catch(e) {}
   }
 
-  /* ---------- drawing ---------- */
+  /* ---------- Bulletproof Drawing Engine ---------- */
   function draw(){
-    ctx.clearRect(0,0,S.w,S.h);
-    ctx.save();
-    let sx=0,sy=0;
-    if(S.shake && S.shake.t>0){ sx=rand(-1,1)*S.shake.mag*S.shake.t; sy=rand(-1,1)*S.shake.mag*S.shake.t; }
-    ctx.translate(sx,sy);
-    drawArena();
-    drawStones();
-    drawPlayers();
-    drawBalls();
-    drawParticles();
-    ctx.restore();
+    try {
+      if(!canvas.width || !canvas.height) resize();
+      const w = window.innerWidth || 800;
+      const h = window.innerHeight || 600;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      
+      // Absolute Context Reset
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      
+      // Deep fallback fill
+      ctx.fillStyle = '#100c1a'; 
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Aesthetic background gradient (safely mapped)
+      const bg = ctx.createRadialGradient(
+        (w * dpr) / 2, (h * dpr) / 2, 10,
+        (w * dpr) / 2, (h * dpr) / 2, Math.max(w * dpr, h * dpr) || 1000
+      );
+      bg.addColorStop(0, '#2c2348');
+      bg.addColorStop(1, '#171224');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Scale calculations ensuring no NaNs
+      let scale = Math.min(w / V_W, h / V_H);
+      if(!isFinite(scale) || scale <= 0) scale = 1;
+      
+      const offsetX = (w - V_W * scale) / 2;
+      const offsetY = (h - V_H * scale) / 2;
+
+      ctx.save();
+      // Apply exact virtual layout correctly
+      ctx.setTransform(
+        scale * dpr, 0, 
+        0, scale * dpr, 
+        offsetX * dpr, offsetY * dpr
+      );
+
+      // Shake (with failsafes)
+      if (S.shake && typeof S.shake.t === 'number' && S.shake.t > 0) {
+        ctx.translate(rand(-1, 1) * (S.shake.mag || 0) * S.shake.t, rand(-1, 1) * (S.shake.mag || 0) * S.shake.t);
+      }
+
+      drawArena();
+      drawStones();
+      drawPlayers();
+      drawBalls();
+      drawParticles();
+
+      ctx.restore();
+    } catch (err) {
+      console.warn("Draw bypassed a bad frame.", err);
+    }
   }
+
   function drawArena(){
-    const g=ctx.createRadialGradient(S.cx,S.cy,10,S.cx,S.cy,S.arenaR*1.4);
-    g.addColorStop(0,'#2c2348'); g.addColorStop(1,'#171224');
-    ctx.fillStyle=g; ctx.fillRect(0,0,S.w,S.h);
+    ctx.fillStyle = '#171224'; 
+    ctx.fillRect(0, 0, V_W, V_H); // Solid bound
 
-    const cg=ctx.createRadialGradient(S.cx,S.cy-S.arenaR*0.3,10,S.cx,S.cy,S.arenaR);
-    cg.addColorStop(0,'#C17A48'); cg.addColorStop(1,'#8C5027');
-    ctx.beginPath(); ctx.arc(S.cx,S.cy,S.arenaR,0,Math.PI*2); ctx.fillStyle=cg; ctx.fill();
+    const cg = ctx.createRadialGradient(V_CX, V_CY - V_ARENA_R * 0.3, 10, V_CX, V_CY, V_ARENA_R || 100);
+    cg.addColorStop(0, '#C17A48'); cg.addColorStop(1, '#8C5027');
+    ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); ctx.fillStyle = cg; ctx.fill();
 
-    ctx.setLineDash([10,10]);
-    ctx.lineWidth=3; ctx.strokeStyle='rgba(243,233,210,0.55)';
-    ctx.beginPath(); ctx.arc(S.cx,S.cy,S.arenaR,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([10, 10]);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(243,233,210,0.55)';
+    ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.strokeStyle='rgba(243,233,210,0.18)'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(S.cx,S.cy,S.arenaR*0.55,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(243,233,210,0.18)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R * 0.55, 0, Math.PI * 2); ctx.stroke();
 
-    for(let i=0;i<8;i++){
-      const a=(i/8)*Math.PI*2;
-      const x=S.cx+Math.cos(a)*S.arenaR, y=S.cy+Math.sin(a)*S.arenaR;
-      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fillStyle='#E8A23D'; ctx.fill();
+    for(let i=0; i<8; i++){
+      const a = (i / 8) * Math.PI * 2;
+      const x = V_CX + Math.cos(a) * V_ARENA_R, y = V_CY + Math.sin(a) * V_ARENA_R;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = '#E8A23D'; ctx.fill();
     }
 
-    ctx.beginPath(); ctx.ellipse(S.cx,S.cy+4,34,14,0,0,Math.PI*2);
-    ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(V_CX, V_CY + 4, 40, 16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
   }
-  function drawStoneShape(x,y,rx,ry,rot,shade){
-    ctx.save(); ctx.translate(x,y); ctx.rotate(rot || 0);
-    const g=ctx.createLinearGradient(-rx,-ry,rx,ry);
-    g.addColorStop(0,shade[0]); g.addColorStop(1,shade[1]);
-    ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2);
-    ctx.fillStyle=g; ctx.fill();
-    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.stroke();
+  
+  function drawStoneShape(x, y, rx, ry, rot, shade){
+    if(!isFinite(x) || !isFinite(y)) return;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
+    
+    // Safely draw gradient
+    const grad = ctx.createLinearGradient(-(rx||1), -(ry||1), (rx||1), (ry||1));
+    grad.addColorStop(0, shade[0]); grad.addColorStop(1, shade[1]);
+    
+    ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1, rx || 1), Math.max(1, ry || 1), 0, 0, Math.PI * 2);
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.stroke();
     ctx.restore();
   }
+
   function drawStones(){
-    const shadeStack=['#F0B968','#C77E22'];
-    const shadeGround=['#E8CBA0','#B98A52'];
-    S.stones.forEach(function(s){
-      if(s.state==='stacked' || s.state==='placed'){
-        const idx = s.state==='placed'? s.placedIndex : s.i;
-        const y = S.cy-idx*6;
-        drawStoneShape(S.cx,y,26-idx*0.6,15-idx*0.3,s.rot,shadeStack);
-      } else if(s.state==='flying'){
-        ctx.beginPath(); ctx.ellipse(s.x, s.y+10, 18, 9, 0, 0, Math.PI*2);
-        ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fill();
-        drawStoneShape(s.x,s.y-(s.z||0),20,12,(s.rot||0)+(s.animT||0)*10,shadeStack);
-      } else if(s.state==='scattered'){
-        const pulse=0.5+0.5*Math.sin(S.time*4+s.i);
-        ctx.beginPath(); ctx.ellipse(s.x,s.y+10,22,8,0,0,Math.PI*2);
-        ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.fill();
-        drawStoneShape(s.x,s.y,20,12,s.rot,shadeGround);
-        ctx.beginPath(); ctx.ellipse(s.x,s.y,24,15,0,0,Math.PI*2);
-        ctx.lineWidth=2; ctx.strokeStyle='rgba(243,233,210,'+(0.15+pulse*0.35)+')'; ctx.stroke();
+    const shadeStack = ['#F0B968', '#C77E22'];
+    const shadeGround = ['#E8CBA0', '#B98A52'];
+    
+    (S.stones || []).forEach(function(s){
+      if(!s) return;
+      if(s.state === 'stacked' || s.state === 'placed'){
+        const idx = s.state === 'placed' ? (s.placedIndex || 0) : (s.i || 0);
+        const y = V_CY - idx * 8;
+        drawStoneShape(V_CX, y, 32 - idx * 1, 18 - idx * 0.5, s.rot || 0, shadeStack);
+      } else if(s.state === 'flying'){
+        ctx.beginPath(); ctx.ellipse(s.x || 0, (s.y || 0) + 10, 22, 10, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+        drawStoneShape(s.x || 0, (s.y || 0) - (s.z || 0), 24, 14, (s.rot || 0) + (s.animT || 0) * 10, shadeStack);
+      } else if(s.state === 'scattered'){
+        const pulse = 0.5 + 0.5 * Math.sin((S.time || 0) * 4 + (s.i || 0));
+        ctx.beginPath(); ctx.ellipse(s.x || 0, (s.y || 0) + 10, 26, 10, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
+        drawStoneShape(s.x || 0, s.y || 0, 24, 14, s.rot || 0, shadeGround);
+        ctx.beginPath(); ctx.ellipse(s.x || 0, s.y || 0, 28, 17, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(243,233,210,' + (0.15 + pulse * 0.35) + ')'; ctx.stroke();
       }
     });
   }
-  function drawPlayers(){
-    [S.players.p1,S.players.p2].forEach(function(p){
-      if(!p || typeof p.x === 'undefined') return;
-      const color = p.id===S.attackerId ? COLORS.attacker : COLORS.defender;
-      
-      ctx.beginPath(); ctx.ellipse(p.x,p.y+p.r*0.7,p.r*0.9,p.r*0.4,0,0,Math.PI*2);
-      ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fill();
 
-      if(p.carrying!=null){ drawStoneShape(p.x,p.y-24,14,9,0,['#F0B968','#C77E22']); }
+  function drawPlayers(){
+    [S.players.p1, S.players.p2].forEach(function(p){
+      if(!p || !isFinite(p.x) || !isFinite(p.y)) return;
+      const color = p.id === S.attackerId ? COLORS.attacker : COLORS.defender;
+      const rad = p.r || cfg.playerR;
+      
+      ctx.beginPath(); ctx.ellipse(p.x, p.y + rad * 0.7, Math.max(1, rad * 0.9), Math.max(1, rad * 0.4), 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill();
+
+      if(p.carrying != null){ drawStoneShape(p.x, p.y - 30, 18, 10, 0, ['#F0B968', '#C77E22']); }
 
       ctx.save();
-      if(p.invulnT>0 || p.dodgeT>0){ ctx.globalAlpha=0.55+0.35*Math.sin(S.time*20); }
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle = p.hitFlashT>0 ? '#ffffff' : color;
+      if((p.invulnT || 0) > 0 || (p.dodgeT || 0) > 0){ ctx.globalAlpha = 0.55 + 0.35 * Math.sin((S.time || 0) * 20); }
+      ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = (p.hitFlashT || 0) > 0 ? '#ffffff' : color;
       ctx.fill();
-      ctx.lineWidth=2.5; ctx.strokeStyle='rgba(23,18,36,0.8)'; ctx.stroke();
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(23,18,36,0.8)'; ctx.stroke();
       ctx.restore();
 
-      const fx=p.x+(p.facing.x||0)*(p.r+9), fy=p.y+(p.facing.y||0)*(p.r+9);
-      ctx.beginPath(); ctx.arc(fx,fy,4,0,Math.PI*2); ctx.fillStyle='#F3E9D2'; ctx.fill();
+      const fx = p.x + ((p.facing && p.facing.x) || 0) * (rad + 10);
+      const fy = p.y + ((p.facing && p.facing.y) || 0) * (rad + 10);
+      ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fillStyle = '#F3E9D2'; ctx.fill();
 
-      ctx.font='600 12px Mukta, sans-serif'; ctx.fillStyle='#F3E9D2'; ctx.textAlign='center';
-      ctx.fillText(S.mode==='single'? (p.id==='p1'?'You':'CPU') : (p.label||''), p.x, p.y-p.r-10);
+      ctx.font = '700 16px Mukta, sans-serif'; ctx.fillStyle = '#F3E9D2'; ctx.textAlign = 'center';
+      ctx.fillText(S.mode === 'single' ? (p.id === 'p1' ? 'You' : 'CPU') : (p.label || ''), p.x, p.y - rad - 12);
     });
   }
+
   function drawBalls(){
-    S.balls.forEach(function(b){
+    (S.balls || []).forEach(function(b){
+      if(!b || !isFinite(b.x) || !isFinite(b.y)) return;
+      const rad = b.r || cfg.ballR;
+      
       if(b.history && b.history.length > 0){
         ctx.beginPath();
-        ctx.moveTo(b.history[0].x, b.history[0].y);
-        for(let j=1; j<b.history.length; j++){ ctx.lineTo(b.history[j].x, b.history[j].y); }
-        const trailColor = b.owner==='neutral' ? 'rgba(255,255,255,0.4)' : 
-                          (b.owner===S.attackerId ? 'rgba(232,162,61,0.5)' : 'rgba(27,110,106,0.5)');
+        ctx.moveTo(b.history[0].x || 0, b.history[0].y || 0);
+        for(let j=1; j<b.history.length; j++){ ctx.lineTo(b.history[j].x || 0, b.history[j].y || 0); }
+        const trailColor = b.owner === 'neutral' ? 'rgba(255,255,255,0.4)' : 
+                          (b.owner === S.attackerId ? 'rgba(232,162,61,0.5)' : 'rgba(27,110,106,0.5)');
         ctx.strokeStyle = trailColor;
-        ctx.lineWidth = b.r * 1.5;
+        ctx.lineWidth = rad * 1.5;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
       }
-      ctx.beginPath(); ctx.ellipse(b.x, b.y+12, b.r*1.2, b.r*0.6, 0, 0, Math.PI*2);
+      ctx.beginPath(); ctx.ellipse(b.x, b.y + 12, Math.max(1, rad * 1.2), Math.max(1, rad * 0.6), 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fill();
 
-      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
-      const g=ctx.createRadialGradient(b.x-2,b.y-2,1,b.x,b.y,b.r);
-      g.addColorStop(0,'#E58B94'); g.addColorStop(1,'#B23A48');
-      ctx.fillStyle=g; ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x, b.y, Math.max(1, rad), 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(b.x - 2, b.y - 2, 1, b.x, b.y, Math.max(1.1, rad));
+      g.addColorStop(0, '#E58B94'); g.addColorStop(1, '#B23A48');
+      ctx.fillStyle = g; ctx.fill();
     });
   }
+
   function drawParticles(){
-    S.particles.forEach(function(p){
-      const a=1-(p.life/p.maxLife);
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);
-      ctx.fillStyle='rgba(243,233,210,'+(a*0.7)+')'; ctx.fill();
+    (S.particles || []).forEach(function(p){
+      if(!p || !isFinite(p.x) || !isFinite(p.y)) return;
+      let a = 1 - ((p.life || 0) / (p.maxLife || 1));
+      if(!isFinite(a) || a < 0 || a > 1) return;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.1, (p.r || 1) * a), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(243,233,210,' + (a * 0.7) + ')'; ctx.fill();
     });
   }
 
   /* ---------- inputs & network mapping ---------- */
-  const P1MAP={KeyW:'up',KeyS:'down',KeyA:'left',KeyD:'right',Space:'action'};
-  const P2MAP={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',Enter:'action'};
+  const P1MAP = {KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', Space: 'action'};
+  const P2MAP = {ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'action'};
 
-  window.addEventListener('keydown',function(e){
+  window.addEventListener('keydown', function(e){
     if(e.repeat) return;
-    if(e.code==='Escape'){ togglePause(); return; }
-    if(S.screen!=='playing') return;
+    if(e.code === 'Escape'){ togglePause(); return; }
+    if(S.screen !== 'playing') return;
     ensureAudio();
     
     if(S.isOnline && S.netRole === 'client'){
       const action = P1MAP[e.code] || P2MAP[e.code];
       if(action){
         e.preventDefault();
-        if(action === 'action') S.conn.send({type:'action'});
-        else S.conn.send({type:'input', key:action, val:true});
+        if(action === 'action') S.conn.send({type: 'action'});
+        else S.conn.send({type: 'input', key: action, val: true});
       }
       return;
     }
 
-    const c1=P1MAP[e.code];
-    if(c1){ e.preventDefault(); if(c1==='action') handleAction(S.players.p1); else S.players.p1.controls[c1]=true; }
+    const c1 = P1MAP[e.code];
+    if(c1){ e.preventDefault(); if(c1 === 'action') handleAction(S.players.p1); else if(S.players.p1) S.players.p1.controls[c1] = true; }
     
-    if(S.mode==='multi' && !S.isOnline){
-      const c2=P2MAP[e.code];
-      if(c2){ e.preventDefault(); if(c2==='action') handleAction(S.players.p2); else S.players.p2.controls[c2]=true; }
+    if(S.mode === 'multi' && !S.isOnline){
+      const c2 = P2MAP[e.code];
+      if(c2){ e.preventDefault(); if(c2 === 'action') handleAction(S.players.p2); else if(S.players.p2) S.players.p2.controls[c2] = true; }
     }
   });
 
-  window.addEventListener('keyup',function(e){
+  window.addEventListener('keyup', function(e){
     if(S.isOnline && S.netRole === 'client'){
       const action = P1MAP[e.code] || P2MAP[e.code];
-      if(action && action !== 'action') S.conn.send({type:'input', key:action, val:false});
+      if(action && action !== 'action') S.conn.send({type: 'input', key: action, val: false});
       return;
     }
-    const c1=P1MAP[e.code]; if(c1 && c1!=='action') S.players.p1.controls[c1]=false;
+    const c1 = P1MAP[e.code]; if(c1 && c1 !== 'action' && S.players.p1) S.players.p1.controls[c1] = false;
     if(!S.isOnline){
-      const c2=P2MAP[e.code]; if(c2 && c2!=='action') S.players.p2.controls[c2]=false;
+      const c2 = P2MAP[e.code]; if(c2 && c2 !== 'action' && S.players.p2) S.players.p2.controls[c2] = false;
     }
   });
 
-  function bindTouchDir(el,player,dir){
-    const down=function(ev){ ev.preventDefault(); ensureAudio(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type:'input', key:dir, val:true});
-      else player.controls[dir]=true; 
+  function bindTouchDir(el, player, dir){
+    const down = function(ev){ ev.preventDefault(); ensureAudio(); 
+      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'input', key: dir, val: true});
+      else if (player) player.controls[dir] = true; 
     };
-    const up=function(ev){ ev.preventDefault(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type:'input', key:dir, val:false});
-      else player.controls[dir]=false; 
+    const up = function(ev){ ev.preventDefault(); 
+      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'input', key: dir, val: false});
+      else if (player) player.controls[dir] = false; 
     };
-    el.addEventListener('pointerdown',down);
-    el.addEventListener('pointerup',up);
-    el.addEventListener('pointercancel',up);
-    el.addEventListener('pointerleave',up);
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerleave', up);
   }
-  function bindTouchAction(el,player){
-    el.addEventListener('pointerdown',function(ev){ ev.preventDefault(); ensureAudio(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type:'action'});
-      else handleAction(player); 
+  function bindTouchAction(el, player){
+    el.addEventListener('pointerdown', function(ev){ ev.preventDefault(); ensureAudio(); 
+      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'action'});
+      else if (player) handleAction(player); 
     });
   }
 
   /* ---------- online multiplayer logic ---------- */
   function applyPlayerState(p, pSt) {
-    if(!pSt) return;
-    p.x = pSt.x ?? p.x; 
-    p.y = pSt.y ?? p.y; 
-    if(pSt.facing) {
-      p.facing.x = pSt.facing.x ?? p.facing.x; 
-      p.facing.y = pSt.facing.y ?? p.facing.y;
+    if(!p || !pSt) return;
+    if (pSt.x != null) p.x = pSt.x; 
+    if (pSt.y != null) p.y = pSt.y; 
+    if (pSt.facing) {
+      if (pSt.facing.x != null) p.facing.x = pSt.facing.x; 
+      if (pSt.facing.y != null) p.facing.y = pSt.facing.y;
     }
-    p.lives = pSt.lives ?? p.lives; 
-    p.carrying = pSt.carrying ?? p.carrying; 
-    p.hitFlashT = pSt.hitFlashT ?? p.hitFlashT; 
-    p.dodgeT = pSt.dodgeT ?? p.dodgeT;
+    if (pSt.lives != null) p.lives = pSt.lives; 
+    if (pSt.carrying !== undefined) p.carrying = pSt.carrying; 
+    if (pSt.hitFlashT != null) p.hitFlashT = pSt.hitFlashT; 
+    if (pSt.dodgeT != null) p.dodgeT = pSt.dodgeT;
   }
 
   function setupConnection(c) {
     c.on('data', data => {
-      if (S.isOnline && S.netRole === 'host') {
-        if (data.type === 'input') S.players.p2.controls[data.key] = data.val;
-        if (data.type === 'action') handleAction(S.players.p2);
-      } 
-      else if (S.isOnline && S.netRole === 'client') {
-        if (data.type === 'state') {
-          const st = data.state;
-          S.phase = st.phase; S.attackerId = st.attackerId; S.scores = st.scores || {p1:0,p2:0}; 
-          S.round = st.round; S.placedCount = st.placedCount; S.shake = st.shake || {t:0,mag:0}; S.winnerId = st.winnerId;
-          
-          applyPlayerState(S.players.p1, st.players.p1);
-          applyPlayerState(S.players.p2, st.players.p2);
-          
-          S.balls = st.balls || [];
-          S.stones = st.stones || []; 
-          S.particles = st.particles || [];
-          
-          if (st.screen === 'playing' && S.screen !== 'playing') {
-            S.screen = 'playing'; hideOverlays();
-            document.getElementById('p2-touch').style.display = 'flex'; 
-            resize(); // Force DOM flush to prevent blanking on mobile browsers
-          } else if (st.screen === 'gameOver' && S.screen !== 'gameOver') {
-            S.screen = 'gameOver'; showGameOver(S.winnerId);
-          } else if (st.screen === 'roundEnd') {
-            S.screen = 'roundEnd';
+      try {
+        if (S.isOnline && S.netRole === 'host') {
+          if (data.type === 'input' && S.players.p2) S.players.p2.controls[data.key] = data.val;
+          if (data.type === 'action' && S.players.p2) handleAction(S.players.p2);
+        } 
+        else if (S.isOnline && S.netRole === 'client') {
+          if (data.type === 'state') {
+            const st = data.state;
+            if(!st) return;
+            S.phase = st.phase || 'aim'; 
+            S.attackerId = st.attackerId || 'p1'; 
+            S.scores = st.scores || {p1:0, p2:0}; 
+            S.round = st.round || 1; 
+            S.placedCount = st.placedCount || 0; 
+            S.shake = st.shake || {t:0, mag:0}; 
+            S.winnerId = st.winnerId;
+            
+            if(st.players && S.players.p1 && S.players.p2) {
+              applyPlayerState(S.players.p1, st.players.p1);
+              applyPlayerState(S.players.p2, st.players.p2);
+            }
+            
+            S.balls = Array.isArray(st.balls) ? st.balls : [];
+            S.stones = Array.isArray(st.stones) ? st.stones : []; 
+            S.particles = Array.isArray(st.particles) ? st.particles : [];
+            
+            if (st.screen === 'playing' && S.screen !== 'playing') {
+              S.screen = 'playing'; hideOverlays();
+              document.getElementById('p1-touch').style.display = 'none'; 
+              document.getElementById('p2-touch').style.display = 'flex'; 
+            } else if (st.screen === 'gameOver' && S.screen !== 'gameOver') {
+              S.screen = 'gameOver'; showGameOver(S.winnerId);
+            } else if (st.screen === 'roundEnd') {
+              S.screen = 'roundEnd';
+            }
+            updateHUD();
           }
-          updateHUD();
+          if (data.audio && Array.isArray(data.audio)) data.audio.forEach(a => playSound(a));
+          if (data.toasts && Array.isArray(data.toasts)) data.toasts.forEach(t => showToast(t.text, t.duration));
         }
-        if (data.audio) data.audio.forEach(a => playSound(a));
-        if (data.toasts) data.toasts.forEach(t => showToast(t.text, t.duration));
+      } catch (e) {
+        console.warn("Network payload parsing issue bypassed:", e);
       }
     });
     c.on('close', () => {
@@ -858,34 +955,64 @@
     btnEl.innerHTML = 'Creating Room...<small>Connecting to server</small>';
     S.peer = new Peer();
     S.peer.on('open', id => {
-      const link = window.location.origin + window.location.pathname + '#room-' + id;
-      navigator.clipboard.writeText(link).catch(()=>{});
+      const url = new URL(window.location.href);
+      url.hash = 'room-' + id;
+      const link = url.href;
+      
+      if(navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).catch(() => {});
+      } else {
+        setTimeout(() => prompt("Copy link to send:", link), 300);
+      }
+      
       btnEl.innerHTML = 'Waiting for Friend...<small>Link copied to clipboard!</small>';
       showToast("Link copied! Send it to your friend.", 4);
     });
+    
     S.peer.on('connection', connection => {
       S.conn = connection;
       S.isOnline = true; S.netRole = 'host';
+      document.getElementById('p2-touch').style.display = 'none'; 
+      document.getElementById('p1-touch').style.display = 'flex'; 
       setupConnection(S.conn);
-      showToast("Player 2 Joined!", 2);
-      startMatch('multi');
+      
+      S.conn.on('open', () => {
+        showToast("Player 2 Joined!", 2);
+        startMatch('multi');
+      });
     });
   }
 
   function initOnlineClient(hostId) {
-    document.getElementById('menu-modes').innerHTML = '<div style="color:var(--marigold); font-weight:bold; margin:20px 0; font-size:18px;">Connecting to Host...</div>';
+    // IMPORTANT: hide the menu buttons rather than overwriting menu-modes'
+    // innerHTML — overwriting it used to delete #btn-single/#btn-multi from
+    // the DOM, which made a later getElementById('btn-single') return null
+    // and crash the rest of DOMContentLoaded (so requestAnimationFrame(loop)
+    // never ran and the joining player's canvas stayed blank forever, even
+    // though the HUD kept updating from incoming network messages).
+    const modesEl = document.getElementById('menu-modes');
+    const diffEl = document.getElementById('menu-difficulty');
+    if(modesEl) modesEl.style.display = 'none';
+    if(diffEl) diffEl.style.display = 'none';
+    const status = document.getElementById('conn-status');
+    if(status){ status.textContent = 'Connecting to host…'; status.style.display = 'block'; }
+
     S.peer = new Peer();
     S.peer.on('open', () => {
-      S.conn = S.peer.connect(hostId);
+      S.conn = S.peer.connect(hostId, { reliable: true });
       S.isOnline = true; S.netRole = 'client'; S.mode = 'multi';
       setupConnection(S.conn);
+      if(status) status.textContent = 'Connected! Waiting for the host to start…';
+    });
+    S.peer.on('error', (err) => {
+      if(status) status.textContent = 'Connection failed (' + (err && err.type ? err.type : 'unknown') + '). Ask for a fresh link and reload.';
     });
   }
 
-  /* ---------- menu wireup ---------- */
+  /* ---------- menus ---------- */
   function togglePause(){
-    if(S.screen==='playing'){ S.screen='paused'; showOverlay('overlay-pause'); }
-    else if(S.screen==='paused'){ S.screen='playing'; hideOverlays(); }
+    if(S.screen === 'playing'){ S.screen = 'paused'; showOverlay('overlay-pause'); }
+    else if(S.screen === 'paused'){ S.screen = 'playing'; hideOverlays(); }
   }
   function showOverlay(id){
     document.querySelectorAll('.overlay').forEach(function(o){ o.classList.remove('visible'); });
@@ -895,25 +1022,30 @@
     document.querySelectorAll('.overlay').forEach(function(o){ o.classList.remove('visible'); });
   }
   function showGameOver(winnerId){
-    const t=document.getElementById('gameover-title');
-    const s=document.getElementById('gameover-sub');
-    if(S.mode==='single'){
-      t.textContent = winnerId==='p1' ? 'PITHU! You win the match' : 'CPU wins the match';
+    const t = document.getElementById('gameover-title');
+    const s = document.getElementById('gameover-sub');
+    if(S.mode === 'single'){
+      t.textContent = winnerId === 'p1' ? 'PITHU! You win the match' : 'CPU wins the match';
     } else {
-      t.textContent = roleName(winnerId)+' wins the match!';
+      t.textContent = roleName(winnerId) + ' wins the match!';
     }
-    s.textContent = 'Final score '+S.scores.p1+' – '+S.scores.p2;
+    s.textContent = 'Final score ' + (S.scores.p1||0) + ' – ' + (S.scores.p2||0);
     showOverlay('overlay-gameover');
   }
 
   function startMatch(mode){
     ensureAudio();
-    S.mode=mode; S.scores={p1:0,p2:0}; S.round=1; S.attackerId='p1';
-    S.players.p2.isAI = (mode==='single');
+    S.mode = mode; S.scores = {p1:0, p2:0}; S.round = 1; S.attackerId = 'p1';
+    if(S.players.p2) S.players.p2.isAI = (mode === 'single');
     hideOverlays();
-    document.getElementById('p2-touch').style.display = mode==='multi' ? 'flex':'none';
+    
+    if(!S.isOnline) {
+      document.getElementById('p2-touch').style.display = mode === 'multi' ? 'flex' : 'none';
+      document.getElementById('p1-touch').style.display = 'flex';
+    }
+    
     startRound();
-    S.screen='playing';
+    S.screen = 'playing';
     updateHUD();
   }
   function backToMenu(){
@@ -921,103 +1053,124 @@
     window.location.reload(); 
   }
 
-  /* ---------- main loop ---------- */
+  /* ---------- game loop ---------- */
   function buildNetworkState() {
     return {
       phase: S.phase, attackerId: S.attackerId, scores: S.scores, round: S.round, placedCount: S.placedCount, shake: S.shake, winnerId: S.winnerId, screen: S.screen,
       players: {
-        p1: {x: S.players.p1.x, y: S.players.p1.y, r: S.players.p1.r, facing: S.players.p1.facing, lives: S.players.p1.lives, carrying: S.players.p1.carrying, hitFlashT: S.players.p1.hitFlashT, dodgeT: S.players.p1.dodgeT},
-        p2: {x: S.players.p2.x, y: S.players.p2.y, r: S.players.p2.r, facing: S.players.p2.facing, lives: S.players.p2.lives, carrying: S.players.p2.carrying, hitFlashT: S.players.p2.hitFlashT, dodgeT: S.players.p2.dodgeT}
+        p1: S.players.p1 ? {x: S.players.p1.x, y: S.players.p1.y, r: S.players.p1.r, facing: S.players.p1.facing, lives: S.players.p1.lives, carrying: S.players.p1.carrying, hitFlashT: S.players.p1.hitFlashT, dodgeT: S.players.p1.dodgeT} : null,
+        p2: S.players.p2 ? {x: S.players.p2.x, y: S.players.p2.y, r: S.players.p2.r, facing: S.players.p2.facing, lives: S.players.p2.lives, carrying: S.players.p2.carrying, hitFlashT: S.players.p2.hitFlashT, dodgeT: S.players.p2.dodgeT} : null
       },
-      balls: S.balls.map(b => ({x:b.x, y:b.y, r:b.r, owner:b.owner, history:b.history})),
-      stones: S.stones.map(s => ({i:s.i, state:s.state, x:s.x, y:s.y, z:s.z, rot:s.rot, landed:s.landed, placedIndex:s.placedIndex, animT:s.animT, animDur:s.animDur, from:s.from, to:s.to, maxZ:s.maxZ})),
-      particles: S.particles.map(p => ({x:p.x, y:p.y, r:p.r, life:p.life, maxLife:p.maxLife}))
+      balls: (S.balls || []).map(b => ({x: b.x, y: b.y, r: b.r, owner: b.owner, history: b.history ? b.history.slice(-5) : []})),
+      stones: (S.stones || []).map(s => ({i: s.i, state: s.state, x: s.x, y: s.y, z: s.z || 0, rot: s.rot || 0, landed: s.landed, placedIndex: s.placedIndex, animT: s.animT || 0})),
+      particles: (S.particles || []).map(p => ({x: p.x, y: p.y, r: p.r, life: p.life, maxLife: p.maxLife}))
     };
   }
 
   function loop(ts){
-    const dt=Math.min(0.033,(ts-S.lastTime)/1000||0);
-    S.lastTime=ts; S.time+=dt;
+    requestAnimationFrame(loop); 
     
-    if(S.screen==='playing'){
+    if (!S.lastTime) S.lastTime = ts; 
+    const dt = Math.min(0.033, (ts - S.lastTime) / 1000 || 0);
+    S.lastTime = ts; S.time += dt;
+    
+    if(S.screen === 'playing'){
       if(!S.isOnline || S.netRole === 'host') {
-        [S.players.p1,S.players.p2].forEach(function(p){
+        [S.players.p1, S.players.p2].forEach(function(p){
           if(!p) return;
-          p.throwCdT=Math.max(0,p.throwCdT-dt);
-          p.dodgeCdT=Math.max(0,p.dodgeCdT-dt);
-          p.dodgeT=Math.max(0,p.dodgeT-dt);
-          p.invulnT=Math.max(0,p.invulnT-dt);
-          p.hitFlashT=Math.max(0,p.hitFlashT-dt);
+          p.throwCdT = Math.max(0, p.throwCdT - dt);
+          p.dodgeCdT = Math.max(0, p.dodgeCdT - dt);
+          p.dodgeT = Math.max(0, p.dodgeT - dt);
+          p.invulnT = Math.max(0, p.invulnT - dt);
+          p.hitFlashT = Math.max(0, p.hitFlashT - dt);
         });
-        if(S.players.p1 && !S.players.p1.isAI) updateHuman(S.players.p1,dt);
-        if(S.players.p2 && !S.players.p2.isAI) updateHuman(S.players.p2,dt);
-        if(S.players.p1 && S.players.p1.isAI) updateAI(S.players.p1,dt);
-        if(S.players.p2 && S.players.p2.isAI) updateAI(S.players.p2,dt);
+        if(S.players.p1 && !S.players.p1.isAI) updateHuman(S.players.p1, dt);
+        if(S.players.p2 && !S.players.p2.isAI) updateHuman(S.players.p2, dt);
+        if(S.players.p1 && S.players.p1.isAI) updateAI(S.players.p1, dt);
+        if(S.players.p2 && S.players.p2.isAI) updateAI(S.players.p2, dt);
         
         updateStones(dt);
         updatePickupDeposit();
         updateBalls(dt);
         updateParticles(dt);
-        if(S.shake.t>0) S.shake.t=Math.max(0,S.shake.t-dt);
+        if(S.shake && S.shake.t > 0) S.shake.t = Math.max(0, S.shake.t - dt);
         updateHUD();
 
         if(S.isOnline && S.conn && S.conn.open) {
-          S.conn.send({
-            type: 'state',
-            state: buildNetworkState(),
-            audio: S.audioQueue,
-            toasts: S.toastQueue
-          });
-          S.audioQueue = [];
-          S.toastQueue = [];
+          S.netTimer += dt;
+          if(S.netTimer > 0.033) { 
+            S.netTimer = 0;
+            S.conn.send({
+              type: 'state',
+              state: buildNetworkState(),
+              audio: S.audioQueue,
+              toasts: S.toastQueue
+            });
+            S.audioQueue = [];
+            S.toastQueue = [];
+          }
         }
       }
     }
-    
     draw();
-    requestAnimationFrame(loop);
   }
 
-  document.addEventListener('DOMContentLoaded',function(){
-    initPlayers();
-    resize();
+  document.addEventListener('DOMContentLoaded', function(){
+    try {
+      initPlayers();
+      resize(); // Force initial dimension load so client has S.w and S.h
 
-    if(window.location.hash && window.location.hash.startsWith('#room-')) {
-      const hostId = window.location.hash.replace('#room-', '');
-      initOnlineClient(hostId);
+      if(window.location.hash && window.location.hash.startsWith('#room-')) {
+        const hostId = window.location.hash.replace('#room-', '');
+        initOnlineClient(hostId);
+      }
+
+      const btnSingle = document.getElementById('btn-single');
+      if(btnSingle) btnSingle.addEventListener('click', function(){
+        document.getElementById('menu-modes').style.display = 'none';
+        document.getElementById('menu-difficulty').style.display = 'flex';
+      });
+
+      const btnMulti = document.getElementById('btn-multi');
+      if(btnMulti) btnMulti.addEventListener('click', function(e){
+        initOnlineHost(e.currentTarget);
+      });
+
+      document.querySelectorAll('.diff-btn').forEach(function(b){
+        b.addEventListener('click', function(){ S.difficulty = b.dataset.diff; startMatch('single'); });
+      });
+      const btnMute = document.getElementById('btn-mute');
+      if(btnMute) btnMute.addEventListener('click', function(e){
+        S.muted = !S.muted; e.currentTarget.textContent = S.muted ? '🔇' : '🔊';
+      });
+
+      const btnPause = document.getElementById('btn-pause');
+      if(btnPause) btnPause.addEventListener('click', togglePause);
+      const btnResume = document.getElementById('btn-resume');
+      if(btnResume) btnResume.addEventListener('click', togglePause);
+      const btnRestart = document.getElementById('btn-restart');
+      if(btnRestart) btnRestart.addEventListener('click', function(){ hideOverlays(); startMatch(S.mode); });
+      const btnMainMenu = document.getElementById('btn-mainmenu');
+      if(btnMainMenu) btnMainMenu.addEventListener('click', backToMenu);
+      const btnMainMenu2 = document.getElementById('btn-mainmenu2');
+      if(btnMainMenu2) btnMainMenu2.addEventListener('click', backToMenu);
+      const btnPlayAgain = document.getElementById('btn-playagain');
+      if(btnPlayAgain) btnPlayAgain.addEventListener('click', function(){ hideOverlays(); startMatch(S.mode); });
+
+      document.querySelectorAll('[data-p1]').forEach(function(el){ bindTouchDir(el, S.players.p1, el.dataset.p1); });
+      document.querySelectorAll('[data-p1action]').forEach(function(el){ bindTouchAction(el, S.players.p1); });
+
+      document.querySelectorAll('[data-p2]').forEach(function(el){ bindTouchDir(el, S.players.p2, el.dataset.p2); });
+      document.querySelectorAll('[data-p2action]').forEach(function(el){ bindTouchAction(el, S.players.p2); });
+    } catch(setupErr) {
+      // Never let a setup-time error (e.g. a missing element) prevent the
+      // render loop from starting — that's exactly what caused the blank
+      // canvas bug: one throw here used to skip requestAnimationFrame(loop)
+      // entirely.
+      console.error('Setup error (continuing anyway):', setupErr);
+    } finally {
+      requestAnimationFrame(loop);
     }
-
-    document.getElementById('btn-single').addEventListener('click',function(){
-      document.getElementById('menu-modes').style.display='none';
-      document.getElementById('menu-difficulty').style.display='flex';
-    });
-    
-    document.getElementById('btn-multi').addEventListener('click',function(e){ 
-      initOnlineHost(e.currentTarget);
-    });
-    
-    document.querySelectorAll('.diff-btn').forEach(function(b){
-      b.addEventListener('click',function(){ S.difficulty=b.dataset.diff; startMatch('single'); });
-    });
-    document.getElementById('btn-mute').addEventListener('click',function(e){
-      S.muted=!S.muted; e.currentTarget.textContent = S.muted? '🔇':'🔊';
-    });
-    
-    document.getElementById('btn-pause').addEventListener('click',togglePause);
-    document.getElementById('btn-resume').addEventListener('click',togglePause);
-    document.getElementById('btn-restart').addEventListener('click',function(){ hideOverlays(); startMatch(S.mode); });
-    document.getElementById('btn-mainmenu').addEventListener('click',backToMenu);
-    document.getElementById('btn-mainmenu2').addEventListener('click',backToMenu);
-    document.getElementById('btn-playagain').addEventListener('click',function(){ hideOverlays(); startMatch(S.mode); });
-
-    document.querySelectorAll('[data-p1]').forEach(function(el){ bindTouchDir(el,S.players.p1,el.dataset.p1); });
-    document.querySelectorAll('[data-p1action]').forEach(function(el){ bindTouchAction(el,S.players.p1); });
-    
-    document.querySelectorAll('[data-p2]').forEach(function(el){ bindTouchDir(el,S.players.p2,el.dataset.p2); });
-    document.querySelectorAll('[data-p2action]').forEach(function(el){ bindTouchAction(el,S.players.p2); });
-
-    window.addEventListener('resize',resize);
-    requestAnimationFrame(loop);
   });
 })();
 </script>
