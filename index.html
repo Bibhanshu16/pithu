@@ -597,7 +597,9 @@
   function throwBall(player, speed, cooldown){
     if(!player) return;
     player.throwCdT = cooldown;
-    const dx = player.facing.x || 0, dy = player.facing.y || 1;
+    // FIX: Grab exactly x and y without '||' defaults overriding falsy '0'
+    const dx = player.facing.x;
+    const dy = player.facing.y;
     S.balls.push({
       x: player.x + dx * (player.r + 12), y: player.y + dy * (player.r + 12),
       vx: dx * speed, vy: dy * speed, r: cfg.ballR, owner: player.id, history: []
@@ -899,7 +901,8 @@
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(23,18,36,0.8)'; ctx.stroke();
       ctx.restore();
 
-      const fx = p.x + (p.facing.x || 0) * (p.r + 10), fy = p.y + (p.facing.y || 0) * (p.r + 10);
+      // FIX: Also applied the exact matching here to avoid the same falsy 0 bug on the facing indicator
+      const fx = p.x + p.facing.x * (p.r + 10), fy = p.y + p.facing.y * (p.r + 10);
       ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fillStyle = '#F3E9D2'; ctx.fill();
 
       ctx.font = '700 16px Mukta, sans-serif'; ctx.fillStyle = '#F3E9D2'; ctx.textAlign = 'center';
@@ -998,7 +1001,7 @@
 
   function showLobby(){
     showOverlay('overlay-lobby');
-    document.getElementById('lobby-linkrow').style.display = 'flex'; // Fix: Make code visible to everyone
+    document.getElementById('lobby-linkrow').style.display = 'flex'; 
     document.getElementById('lobby-code-display').textContent = S.currentRoomCode || '.....';
 
     const dis = S.netRole === 'client';
@@ -1038,7 +1041,6 @@
   }
 
   function broadcastLobby(){
-    // Fix: Send team assignment info with the broadcast payload
     const pData = {};
     S.playerOrder.forEach(id => {
       if(S.players[id]) pData[id] = { team: S.players[id].team };
@@ -1094,7 +1096,6 @@
           S.playerOrder = data.playerOrder;
           S.playerOrder.forEach(id => { 
             if(!S.players[id]) S.players[id] = newPlayer(id, id.toUpperCase()); 
-            // Fix: Apply the team data sent by the host
             if(data.players && data.players[id]) {
               S.players[id].team = data.players[id].team;
             }
