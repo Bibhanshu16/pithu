@@ -1216,6 +1216,7 @@
   function startMatch(mode){
     ensureAudio(); S.mode = mode; S.scores = {A:0, B:0}; S.round = 1;
     if(mode === 'single'){
+      S.roomConfig.lives = 2; // Forcing 2 lives for single player match
       S.playerOrder = ['p1', 'p2']; if(!S.players.p2) S.players.p2 = newPlayer('p2', 'CPU');
       S.players.p1.team = 'A'; S.players.p2.team = 'B'; S.players.p2.isAI = true; S.attackingTeam = 'A';
     } else {
@@ -1303,7 +1304,11 @@
 
     // Difficulty Select for Single Player
     document.querySelectorAll('.diff-btn').forEach(b => {
-      b.addEventListener('click', () => { S.roomConfig.diff = b.dataset.diff; startMatch('single'); });
+      b.addEventListener('click', () => { 
+        S.roomConfig.diff = b.dataset.diff;
+        S.roomConfig.lives = 2; // Fixed: Set 2 lives for single player mode
+        startMatch('single'); 
+      });
     });
     
     // UI Interactions
