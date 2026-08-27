@@ -44,7 +44,7 @@
     z-index:5;
   }
   #hud-top{top:0;}
-  #hud-bottom{bottom:0; flex-direction:column; align-items:center; gap:2px;
+  #hud-bottom{bottom:0; flex-direction:column; align-items:center; gap:3px;
     background:linear-gradient(0deg, rgba(23,18,36,0.72), rgba(23,18,36,0)); padding-bottom:14px;}
   .hud-left,.hud-right{display:flex; align-items:center; gap:10px; pointer-events:auto;}
   .hud-right{margin-left:auto;}
@@ -65,6 +65,7 @@
   .hud-lives{font-size:16px; letter-spacing:3px; color:var(--gulal);}
   .hud-progress{font-size:12px; opacity:0.85;}
   .hud-hint{font-size:12px; opacity:0.65; text-align:center; max-width:90vw;}
+  .hud-roster{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin:2px 0; pointer-events:none; max-width:94vw;}
 
   #toast{
     position:absolute; top:64px; left:50%; transform:translate(-50%,-8px);
@@ -77,57 +78,44 @@
 
   /* ---------- touch controls ---------- */
   .touch-panel{
-    position:absolute; bottom:70px; left:30px; right:30px; 
-    display:flex; align-items:center; justify-content:space-between; 
-    z-index:5; pointer-events:none; /* Let touches pass through the center */
+    position:absolute; bottom:70px; left:30px; right:30px;
+    display:flex; align-items:center; justify-content:space-between;
+    z-index:5; pointer-events:none;
   }
-  
-  .joystick-zone, .action-btn {
-    pointer-events: auto; /* Re-enable touches for the controls */
-  }
-
-  /* Analog Joystick */
+  .joystick-zone, .action-btn { pointer-events: auto; }
   .joystick-zone {
-    width: 110px; height: 110px;
-    border-radius: 50%;
-    background: rgba(243,233,210,0.08);
-    border: 2px solid rgba(243,233,210,0.15);
-    position: relative;
-    touch-action: none;
+    width: 110px; height: 110px; border-radius: 50%;
+    background: rgba(243,233,210,0.08); border: 2px solid rgba(243,233,210,0.15);
+    position: relative; touch-action: none;
   }
   .joystick-knob {
-    width: 44px; height: 44px;
-    border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     background: rgba(243,233,210,0.4);
-    position: absolute;
-    top: 50%; left: 50%;
+    position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     border: 2px solid rgba(243,233,210,0.6);
   }
-
   .action-btn{
     width:66px; height:66px; border-radius:50%; border:2px solid rgba(243,233,210,0.4);
     background:radial-gradient(circle at 35% 30%, var(--gulal), var(--peacock-dark) 120%);
     color:var(--chalk); font-size:20px; cursor:pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
-  .action-btn:active {
-    transform: scale(0.95);
-  }
+  .action-btn:active { transform: scale(0.95); }
 
   /* ---------- overlays ---------- */
   .overlay{
     position:absolute; inset:0; display:none; align-items:center; justify-content:center;
-    background:rgba(15,11,26,0.62); z-index:10; padding:16px;
+    background:rgba(15,11,26,0.62); z-index:10; padding:16px; overflow-y:auto;
   }
   .overlay.visible{display:flex;}
   .card{
     background:linear-gradient(180deg, #2A2244, #1D1730);
     border:1px solid rgba(232,162,61,0.35);
     border-radius:20px; padding:26px 28px; max-width:460px; width:100%;
-    text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:auto;
   }
   .card-title{font-family:var(--font-display); font-weight:800; font-size:clamp(28px,7vw,40px);}
   .card-title span{color:var(--marigold); font-size:0.55em; display:block; letter-spacing:3px; margin-top:2px;}
@@ -152,6 +140,18 @@
   .howto{margin-top:8px; text-align:left; font-size:12.5px; line-height:1.5; opacity:0.85;}
   .howto summary{cursor:pointer; font-weight:600; color:var(--marigold); margin-bottom:6px; text-align:center;}
   .howto p{margin:6px 0;}
+  .lobby-row{display:flex; gap:6px; margin:10px 0;}
+  .lobby-link-input{
+    flex:1; min-width:0; padding:9px 10px; border-radius:8px;
+    border:1px solid rgba(243,233,210,0.3); background:rgba(0,0,0,0.25);
+    color:var(--chalk); font-size:12px; font-family:var(--font-body);
+  }
+  .lobby-players{display:flex; flex-direction:column; gap:6px; margin:12px 0; text-align:left; max-height:180px; overflow-y:auto;}
+  .lobby-player-row{
+    padding:8px 12px; background:rgba(243,233,210,0.08); border-radius:8px; font-size:13.5px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .team-dot{width:9px; height:9px; border-radius:50%; display:inline-block; background:rgba(243,233,210,0.35);}
 
   button:focus-visible, .icon-btn:focus-visible{
     outline:2px solid var(--marigold); outline-offset:2px;
@@ -191,33 +191,26 @@
   <div id="toast"></div>
 
   <div id="hud-bottom" class="hud-bar">
+    <div id="hud-roster" class="hud-roster"></div>
     <div id="hud-lives" class="hud-lives">●●●</div>
     <div id="hud-progress" class="hud-progress">0 / 7 stones</div>
     <div id="hud-hint" class="hud-hint">Face the stack and press ACTION to throw</div>
   </div>
 
-  <div id="p1-touch" class="touch-panel">
-    <div class="joystick-zone" id="joy-p1">
-      <div class="joystick-knob" id="knob-p1"></div>
+  <div id="touch-controls" class="touch-panel" style="display:none;">
+    <div class="joystick-zone" id="joy-zone">
+      <div class="joystick-knob" id="joy-knob"></div>
     </div>
-    <button class="action-btn" data-p1action>●</button>
-  </div>
-  
-  <div id="p2-touch" class="touch-panel" style="display:none;">
-    <div class="joystick-zone" id="joy-p2">
-      <div class="joystick-knob" id="knob-p2"></div>
-    </div>
-    <button class="action-btn" data-p2action>●</button>
+    <button class="action-btn" id="btn-action">●</button>
   </div>
 
   <div id="overlay-menu" class="overlay visible">
     <div class="card">
       <div class="card-title">पिठू<span>PITHU · SEVEN STONES</span></div>
       <div class="card-sub">A courtyard classic — knock down the stack, then rebuild it before you get hit.</div>
-      <div id="conn-status" class="card-sub" style="display:none; color:var(--marigold); font-weight:600;"></div>
       <div id="menu-modes" class="menu-row">
         <button class="big-btn" id="btn-single">Single Player<small>You vs the CPU</small></button>
-        <button class="big-btn" id="btn-multi">Online Multiplayer<small>Copy link and send to a friend</small></button>
+        <button class="big-btn" id="btn-multi">Online Multiplayer<small>Up to 6 players — share the link</small></button>
       </div>
       <div id="menu-difficulty" class="menu-row" style="display:none;">
         <button class="diff-btn" data-diff="easy">Easy</button>
@@ -226,11 +219,26 @@
       </div>
       <details class="howto">
         <summary>How to play &amp; about Pithu</summary>
-        <p><b>Pithu</b> (also called Lagori or Seven Stones) is a street game played across India, usually at dusk in a courtyard or lane. A stack of flat stones sits in the middle. One side throws a ball to topple it, then scrambles to rebuild the stack while the other side tries to hit them with the ball. Rebuild it before you're out, and your side wins the round.</p>
-        <p><b>Aiming phase:</b> move to line up with the stack and press ACTION to throw. The defender will try to block you.</p>
-        <p><b>Rebuild phase:</b> walk onto scattered stones to pick them up, carry them back to the centre to stack them, and dodge incoming throws. ACTION becomes a quick dodge-roll for the attacker, and a throw for the defender.</p>
-        <p><b>P1:</b> WASD to move · Space for action<br><b>P2 (multiplayer):</b> Arrow keys to move · Enter for action</p>
+        <p><b>Pithu</b> (also called Lagori or Seven Stones) is a street game played across India, usually at dusk in a courtyard or lane. A stack of flat stones sits in the middle. One side throws a ball to topple it, then scrambles to rebuild the stack while the other side tries to hit them with the ball. Rebuild it before your whole side is out, and your team wins the round.</p>
+        <p><b>Move:</b> WASD, arrow keys, or the on-screen joystick. <b>Action:</b> Space, Enter, or the round button — throws the ball (aiming at the stack, or defending) and becomes a quick dodge-roll while your team is rebuilding.</p>
+        <p><b>Online multiplayer:</b> up to 6 people can join one room. You're split evenly into <b>Team A</b> and <b>Team B</b> — one team attacks together while the other defends together, then you swap sides each round. First team to 3 round wins takes the match.</p>
       </details>
+    </div>
+  </div>
+
+  <div id="overlay-lobby" class="overlay">
+    <div class="card">
+      <div class="card-title" style="font-size:26px;">Lobby</div>
+      <div id="lobby-linkrow" class="lobby-row" style="display:none;">
+        <input id="lobby-link" class="lobby-link-input" type="text" readonly placeholder="Generating link…">
+        <button class="diff-btn" id="btn-copy-link" style="padding:9px 16px;">Copy</button>
+      </div>
+      <div id="lobby-players" class="lobby-players"></div>
+      <div id="lobby-status" class="card-sub"></div>
+      <div class="menu-row">
+        <button class="big-btn" id="btn-start-game" style="display:none;">Start Game</button>
+        <button class="big-btn" id="btn-lobby-leave">Leave</button>
+      </div>
     </div>
   </div>
 
@@ -261,28 +269,24 @@
 <script>
 (function(){
   'use strict';
-  
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
-  // --- VIRTUAL GAME COORDINATES (Bulletproof sizing) ---
-  const V_W = 1000;
-  const V_H = 1000;
-  const V_CX = 500;
-  const V_CY = 500;
-  const V_ARENA_R = 380; 
+  const V_W = 1000, V_H = 1000, V_CX = 500, V_CY = 500, V_ARENA_R = 380;
+  const MAX_PLAYERS = 6;
 
   const cfg = {
     playerR: 20, ballR: 8,
-    attackerSpeed: 280, p2Speed: 260,
+    humanSpeed: 280,
     defenderSpeedByDiff: {easy: 180, normal: 230, hard: 280},
     attackerThrowSpeed: 600, attackerThrowCooldown: 0.45,
     defenderThrowSpeedByDiff: {easy: 320, normal: 420, hard: 520},
     defenderThrowCooldownByDiff: {easy: 1.6, normal: 1.15, hard: 0.75},
-    p2ThrowSpeed: 500, p2ThrowCooldown: 0.9,
+    humanDefThrowSpeed: 500, humanDefThrowCooldown: 0.9,
     aimErrorByDiff: {easy: 0.42, normal: 0.2, hard: 0.06},
     dodgeMultiplier: 2.1, dodgeDuration: 0.22, dodgeCooldown: 1.3,
-    livesStart: 3, stonesTotal: 7, roundsToWin: 3,
+    stonesTotal: 7, roundsToWin: 3,
     guardRadius: 80, hitInvulnAfter: 0.6, aiThrowRangeMul: 1.3
   };
 
@@ -292,48 +296,60 @@
   function dist(x1,y1,x2,y2){ return Math.hypot(x1 - x2, y1 - y2); }
   function lerp(a,b,t){ return a + (b - a) * t; }
 
-  // App State
   const S = {
     screen: 'menu', mode: null, difficulty: 'normal',
-    phase: 'aim', attackerId: 'p1',
-    scores: {p1:0, p2:0}, round: 1, winnerId: null,
+    phase: 'aim', attackingTeam: 'A',
+    scores: {A:0, B:0}, round: 1, winnerTeam: null,
     muted: false,
-    players: {p1: null, p2: null},
+    players: {}, playerOrder: ['p1'],
     balls: [], stones: [], placedCount: 0,
     particles: [], shake: {t:0, mag:0},
     lastTime: 0, time: 0,
     toastTimer: null,
-    
-    // Network properties
-    peer: null, conn: null, isOnline: false, netRole: 'host', netTimer: 0,
+    peer: null, conn: null, conns: {}, isOnline: false, netRole: 'host', netTimer: 0,
+    myId: 'p1', matchStarted: false,
     audioQueue: [], toastQueue: []
   };
 
-  function newPlayer(id, speed, label){
+  function newPlayer(id, label){
     return {
-      id, label, x: 0, y: 0, r: cfg.playerR, speed,
-      facing: {x: 0, y: -1}, lives: cfg.livesStart, carrying: null,
+      id, label, team: null, isAI: false, isOut: false,
+      x: 0, y: 0, r: cfg.playerR,
+      facing: {x: 0, y: -1}, carrying: null,
       invulnT: 0, dodgeT: 0, dodgeCdT: 0, throwCdT: 0, hitFlashT: 0,
-      isAI: false, controls: {up: false, down: false, left: false, right: false, joyDx: 0, joyDy: 0}
+      controls: {up: false, down: false, left: false, right: false, joyDx: 0, joyDy: 0}
     };
   }
 
   function initPlayers(){
-    S.players.p1 = newPlayer('p1', cfg.attackerSpeed, 'P1');
-    S.players.p2 = newPlayer('p2', cfg.p2Speed, 'P2');
+    S.players.p1 = newPlayer('p1', 'P1');
   }
 
-  function getAttacker(){ return S.players[S.attackerId]; }
-  function getDefender(){ return S.players[S.attackerId === 'p1' ? 'p2' : 'p1']; }
-  function otherOf(p){ return p.id === 'p1' ? S.players.p2 : S.players.p1; }
-  function roleName(id){ if(S.mode === 'single') return id === 'p1' ? 'You' : 'CPU'; return id.toUpperCase(); }
+  function activePlayers(){ return S.playerOrder.map(function(id){ return S.players[id]; }).filter(Boolean); }
+  function getAttackers(){ return activePlayers().filter(function(p){ return p.team === S.attackingTeam; }); }
+  function getDefenders(){ return activePlayers().filter(function(p){ return p.team && p.team !== S.attackingTeam; }); }
+  function otherTeam(t){ return t === 'A' ? 'B' : 'A'; }
+  function myTeam(){
+    if(S.mode === 'single') return 'A';
+    const id = S.netRole === 'client' ? S.myId : 'p1';
+    return (id && S.players[id]) ? S.players[id].team : null;
+  }
+  function teamLabel(team){
+    if(S.mode === 'single') return team === 'A' ? 'You' : 'CPU';
+    return team === myTeam() ? 'Your team' : 'Team ' + team;
+  }
+  function getLocalPlayer(){
+    if(S.mode === 'single') return S.players.p1;
+    if(S.netRole === 'host') return S.players.p1;
+    if(S.netRole === 'client') return S.myId ? (S.players[S.myId] || null) : null;
+    return S.players.p1 || null;
+  }
 
-  /* ---------- display sizing (Runs natively without layout thrashing) ---------- */
+  /* ---------- display sizing ---------- */
   function resize(){
     const w = window.innerWidth || 800;
     const h = window.innerHeight || 600;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
   }
@@ -367,7 +383,7 @@
       case 'pick': beep(660, 0.08, 'sine', 0.1); break;
       case 'place': beep(500, 0.1, 'triangle', 0.14); break;
       case 'dash': beep(800, 0.08, 'sine', 0.08); break;
-      case 'win': beep(660, 0.15, 'triangle', 0.18); setTimeout(() => beep(880, 0.25, 'triangle', 0.18), 140); break;
+      case 'win': beep(660, 0.15, 'triangle', 0.18); setTimeout(function(){ beep(880, 0.25, 'triangle', 0.18); }, 140); break;
       case 'lose': beep(200, 0.3, 'sawtooth', 0.18); break;
     }
   }
@@ -376,14 +392,14 @@
   function makeStack(){
     const arr = [];
     for(let i=0; i<7; i++){
-      arr.push({i, state: 'stacked', x: V_CX, y: V_CY - i * 8, z: 0, rot: rand(-0.15, 0.15), landed: true, placedIndex: null});
+      arr.push({i, state: 'stacked', x: V_CX, y: V_CY - i * 8, z: 0, rot: rand(-0.15, 0.15), landed: true, placedIndex: null, claimedBy: null});
     }
     return arr;
   }
   function knockStack(){
     playSound('knock'); shake(14, 0.4);
     const baseAngle = rand(0, Math.PI * 2);
-    (S.stones || []).forEach((s, idx) => {
+    (S.stones || []).forEach(function(s, idx){
       const angle = baseAngle + (idx / 7) * Math.PI * 2 + rand(-0.3, 0.3);
       const r = rand(V_ARENA_R * 0.28, V_ARENA_R * 0.78);
       s.state = 'flying';
@@ -394,11 +410,12 @@
       s.z = 0;
       s.animT = 0; s.animDur = rand(0.35, 0.6);
       s.landed = false;
+      s.claimedBy = null;
     });
     S.phase = 'rebuild';
   }
   function updateStones(dt){
-    (S.stones || []).forEach(s => {
+    (S.stones || []).forEach(function(s){
       if(s.state === 'flying'){
         s.animT += dt;
         const t = Math.min(1, s.animT / s.animDur);
@@ -414,29 +431,32 @@
     });
   }
   function updatePickupDeposit(){
-    const atk = getAttacker();
-    if(!atk || S.phase !== 'rebuild') return;
-    if(atk.carrying == null){
-      for(const s of (S.stones || [])){
-        if(s.state === 'scattered' && s.landed && dist(atk.x, atk.y, s.x, s.y) < atk.r + 14){
-          s.state = 'carried'; atk.carrying = s.i; playSound('pick'); break;
+    if(S.phase !== 'rebuild') return;
+    getAttackers().forEach(function(atk){
+      if(atk.isOut) return;
+      if(atk.carrying == null){
+        for(const s of (S.stones || [])){
+          if(s.state === 'scattered' && s.landed && !s.claimedBy && dist(atk.x, atk.y, s.x, s.y) < atk.r + 14){
+            s.state = 'carried'; s.claimedBy = atk.id; atk.carrying = s.i; playSound('pick'); break;
+          }
+        }
+      } else {
+        const s = (S.stones || []).find(function(st){ return st.i === atk.carrying; });
+        if(!s){ atk.carrying = null; return; }
+        if(dist(atk.x, atk.y, V_CX, V_CY) < 40){
+          s.state = 'placed'; s.placedIndex = S.placedCount; S.placedCount++;
+          atk.carrying = null; playSound('place'); shake(5, 0.15); spawnDust(V_CX, V_CY, 8);
+          if(S.placedCount >= cfg.stonesTotal){ endRound('attackers'); }
+        } else {
+          s.x = atk.x; s.y = atk.y - 30;
         }
       }
-    } else {
-      const s = (S.stones || []).find(st => st.i === atk.carrying);
-      if(!s){ atk.carrying = null; return; }
-      if(dist(atk.x, atk.y, V_CX, V_CY) < 40){
-        s.state = 'placed'; s.placedIndex = S.placedCount; S.placedCount++;
-        atk.carrying = null; playSound('place'); shake(5, 0.15); spawnDust(V_CX, V_CY, 8);
-        if(S.placedCount >= cfg.stonesTotal){ endRound('attacker'); }
-      } else {
-        s.x = atk.x; s.y = atk.y - 30;
-      }
-    }
+    });
   }
 
   /* ---------- particles ---------- */
-  function spawnDust(x, y, count=8){
+  function spawnDust(x, y, count){
+    count = count || 8;
     for(let i=0; i<count; i++){
       S.particles.push({x, y, vx: rand(-80, 80), vy: rand(-80, 80), life: 0, maxLife: rand(0.3, 0.6), r: rand(3, 6)});
     }
@@ -464,8 +484,9 @@
   }
   function handleAction(player){
     if(S.screen !== 'playing' || !player) return;
-    const isAttacker = player.id === S.attackerId;
+    const isAttacker = player.team === S.attackingTeam;
     if(isAttacker){
+      if(player.isOut) return;
       if(S.phase === 'aim'){
         if(player.throwCdT <= 0) throwBall(player, cfg.attackerThrowSpeed, cfg.attackerThrowCooldown);
       } else if(S.phase === 'rebuild'){
@@ -473,8 +494,8 @@
       }
     } else {
       if(S.phase === 'rebuild' && player.throwCdT <= 0){
-        const speed = player.isAI ? cfg.defenderThrowSpeedByDiff[S.difficulty] : cfg.p2ThrowSpeed;
-        const cd = player.isAI ? cfg.defenderThrowCooldownByDiff[S.difficulty] : cfg.p2ThrowCooldown;
+        const speed = player.isAI ? cfg.defenderThrowSpeedByDiff[S.difficulty] : cfg.humanDefThrowSpeed;
+        const cd = player.isAI ? cfg.defenderThrowCooldownByDiff[S.difficulty] : cfg.humanDefThrowCooldown;
         throwBall(player, speed, cd);
       }
     }
@@ -485,41 +506,41 @@
     for(let i=(S.balls || []).length-1; i>=0; i--){
       const b = S.balls[i];
       if(!b) continue;
-      
       b.history = b.history || [];
       b.history.push({x: b.x, y: b.y});
       if(b.history.length > 6) b.history.shift();
-
       b.x += (b.vx || 0) * dt; b.y += (b.vy || 0) * dt;
       let remove = false;
       if(dist(b.x, b.y, V_CX, V_CY) > V_ARENA_R + 80) remove = true;
-      
+
       if(!remove && b.owner !== 'neutral'){
         const thrower = S.players[b.owner];
-        const target = thrower && thrower.id === S.attackerId ? getDefender() : getAttacker();
-        
-        if(target && dist(b.x, b.y, target.x, target.y) < b.r + target.r){
-          if(target.id === S.attackerId){
-            if(target.invulnT <= 0 && target.dodgeT <= 0){
-              target.lives--; playSound('hit'); shake(12, 0.35); flashHit(target); spawnDust(target.x, target.y, 12);
-              target.x += b.vx * 0.04;
-              target.y += b.vy * 0.04;
-              
-              if(target.carrying != null){ const s = (S.stones || []).find(st => st.i === target.carrying); if(s){ s.state = 'scattered'; s.landed = true; } target.carrying = null; }
-              target.invulnT = cfg.hitInvulnAfter;
-              if(target.lives <= 0) endRound('defender');
+        const throwerTeam = thrower ? thrower.team : null;
+        const opponents = activePlayers();
+        for(let oi=0; oi<opponents.length; oi++){
+          const target = opponents[oi];
+          if(target.id === b.owner) continue;
+          if(target.team === throwerTeam) continue;
+          if(dist(b.x, b.y, target.x, target.y) >= b.r + target.r) continue;
+          if(target.team === S.attackingTeam){
+            if(!target.isOut && target.invulnT <= 0 && target.dodgeT <= 0){
+              target.isOut = true; playSound('hit'); shake(12, 0.35); flashHit(target); spawnDust(target.x, target.y, 12);
+              if(target.carrying != null){
+                const s = (S.stones || []).find(function(st){ return st.i === target.carrying; });
+                if(s){ s.state = 'scattered'; s.landed = true; s.claimedBy = null; }
+                target.carrying = null;
+              }
               remove = true;
+              if(getAttackers().every(function(p){ return p.isOut; })) endRound('defenders');
             }
           } else {
             playSound('block');
-            b.vx *= -0.4;
-            b.vy *= -0.4;
-            b.owner = 'neutral';
-            remove = false;
+            b.vx *= -0.4; b.vy *= -0.4; b.owner = 'neutral';
             spawnDust(b.x, b.y, 4);
           }
+          break;
         }
-        if(!remove && S.phase === 'aim' && thrower && thrower.id === S.attackerId){
+        if(!remove && S.phase === 'aim' && thrower && thrower.team === S.attackingTeam){
           if(dist(b.x, b.y, V_CX, V_CY) < b.r + 40){ knockStack(); remove = true; }
         }
       }
@@ -530,55 +551,38 @@
   /* ---------- movement ---------- */
   function updateHuman(p, dt){
     if(!p || !p.controls) return;
-    let dx = 0, dy = 0;
-    let isJoy = false;
-
-    // Check Joystick Input
-    if(p.controls.joyDx || p.controls.joyDy) {
-      dx = p.controls.joyDx;
-      dy = p.controls.joyDy;
-      isJoy = true;
-    } else {
-      // Keyboard input fallback
+    if(p.team === S.attackingTeam && p.isOut) return;
+    let dx = 0, dy = 0, isJoy = false;
+    if(p.controls.joyDx || p.controls.joyDy){ dx = p.controls.joyDx; dy = p.controls.joyDy; isJoy = true; }
+    else {
       if(p.controls.up) dy -= 1;
       if(p.controls.down) dy += 1;
       if(p.controls.left) dx -= 1;
       if(p.controls.right) dx += 1;
     }
-    
     if(dx || dy){
       const len = Math.hypot(dx, dy);
-      const nx = dx / len; 
-      const ny = dy / len;
-      
+      const nx = dx / len, ny = dy / len;
       p.facing = {x: nx, y: ny};
-      
-      // Calculate speed: analog limits speed to distance of knob, keyboard sets to max (1)
-      const speedMult = isJoy ? Math.min(len, 1) : 1; 
-      const spd = p.speed * (p.dodgeT > 0 ? cfg.dodgeMultiplier : 1) * speedMult;
-      
-      p.x += nx * spd * dt; 
-      p.y += ny * spd * dt;
-      
+      const speedMult = isJoy ? Math.min(len, 1) : 1;
+      const spd = cfg.humanSpeed * (p.dodgeT > 0 ? cfg.dodgeMultiplier : 1) * speedMult;
+      p.x += nx * spd * dt; p.y += ny * spd * dt;
       if(p.dodgeT > 0 && Math.random() < 0.4){
         S.particles.push({x: p.x, y: p.y + p.r, vx: -nx * 40, vy: -ny * 40, life: 0, maxLife: 0.25, r: rand(4, 7)});
       }
     }
     clampToArena(p);
   }
-
   function clampToArena(p){
     if(!p) return;
     const d = dist(p.x, p.y, V_CX, V_CY);
     const maxD = V_ARENA_R - p.r - 4;
     if(d > maxD && d > 0){ const k = maxD / d; p.x = V_CX + (p.x - V_CX) * k; p.y = V_CY + (p.y - V_CY) * k; }
   }
-
   function updateAI(ai, dt){
     if(!ai) return;
-    const atk = getAttacker();
+    const atk = getAttackers()[0];
     if(!atk) return;
-    
     let tx, ty;
     if(S.phase === 'aim'){
       const dx = atk.x - V_CX, dy = atk.y - V_CY; const len = Math.hypot(dx, dy) || 1;
@@ -606,35 +610,46 @@
     }
   }
 
-  /* ---------- rounds ---------- */
+  /* ---------- team layout & rounds ---------- */
+  function layoutTeam(list, atBottom){
+    const n = Math.max(1, list.length);
+    const halfSpread = Math.min(0.95, 0.32 * (n - 1));
+    list.forEach(function(p, i){
+      const t = n === 1 ? 0 : (i / (n - 1)) - 0.5;
+      const angle = (atBottom ? Math.PI / 2 : -Math.PI / 2) + t * halfSpread * 2;
+      const rad = V_ARENA_R * 0.62;
+      p.x = V_CX + Math.cos(angle) * rad;
+      p.y = V_CY + Math.sin(angle) * rad;
+      const fx = V_CX - p.x, fy = V_CY - p.y; const fl = Math.hypot(fx, fy) || 1;
+      p.facing = {x: fx / fl, y: fy / fl};
+    });
+  }
   function startRound(){
     S.phase = 'aim'; S.placedCount = 0; S.balls = []; S.particles = [];
-    [S.players.p1, S.players.p2].forEach(p => {
-      if(!p) return;
-      p.invulnT = 0; p.dodgeT = 0; p.dodgeCdT = 0; p.throwCdT = 0; p.hitFlashT = 0; p.carrying = null;
+    activePlayers().forEach(function(p){
+      p.invulnT = 0; p.dodgeT = 0; p.dodgeCdT = 0; p.throwCdT = 0; p.hitFlashT = 0; p.carrying = null; p.isOut = false;
     });
-    const atk = getAttacker(), def = getDefender();
-    if(atk) { atk.x = V_CX; atk.y = V_CY + V_ARENA_R * 0.62; atk.facing = {x: 0, y: -1}; atk.lives = cfg.livesStart; }
-    if(def) { def.x = V_CX; def.y = V_CY - V_ARENA_R * 0.55; def.facing = {x: 0, y: 1}; }
+    layoutTeam(getAttackers(), true);
+    layoutTeam(getDefenders(), false);
     S.stones = makeStack();
-    showToast('Round ' + (S.round||1) + ' — ' + roleName(S.attackerId) + ' attacks, ' + roleName(def?def.id:'p2') + ' defends', 1.5);
+    showToast('Round ' + (S.round || 1) + ' — ' + teamLabel(S.attackingTeam) + ' attacking, ' + teamLabel(otherTeam(S.attackingTeam)) + ' defending', 1.6);
   }
-  function endRound(winnerRole){
-    const winnerId = winnerRole === 'attacker' ? S.attackerId : otherOf(getAttacker()).id;
-    if(!S.scores) S.scores = {p1:0, p2:0};
-    S.scores[winnerId] = (S.scores[winnerId] || 0) + 1;
-    playSound(winnerRole === 'attacker' ? 'win' : 'lose');
+  function endRound(winnerSide){
+    const winnerTeam = winnerSide === 'attackers' ? S.attackingTeam : otherTeam(S.attackingTeam);
+    if(!S.scores) S.scores = {A:0, B:0};
+    S.scores[winnerTeam] = (S.scores[winnerTeam] || 0) + 1;
+    playSound(winnerSide === 'attackers' ? 'win' : 'lose');
     updateHUD();
-    if(S.scores[winnerId] >= cfg.roundsToWin){
-      S.winnerId = winnerId;
+    if(S.scores[winnerTeam] >= cfg.roundsToWin){
+      S.winnerTeam = winnerTeam;
       S.screen = 'gameOver';
-      showGameOver(winnerId);
+      showGameOver(winnerTeam);
     } else {
       S.screen = 'roundEnd';
-      const msg = winnerRole === 'attacker' ? 'PITHU! ' + roleName(winnerId) + ' rebuilt the stack!' : roleName(winnerId) + ' wins the round!';
+      const msg = winnerSide === 'attackers' ? 'PITHU! ' + teamLabel(winnerTeam) + ' rebuilt the stack!' : teamLabel(winnerTeam) + ' wins the round!';
       showToast(msg, 1.9, function(){
         S.round = (S.round || 1) + 1;
-        if(S.mode === 'multi') S.attackerId = S.attackerId === 'p1' ? 'p2' : 'p1';
+        if(S.mode === 'multi') S.attackingTeam = otherTeam(S.attackingTeam);
         startRound();
         S.screen = 'playing';
       });
@@ -663,34 +678,47 @@
   function updateHUD(){
     try {
       hudRound.textContent = 'Round ' + (S.round || 1);
-      hudScoreP1.textContent = (S.scores && S.scores.p1) || 0;
-      hudScoreP2.textContent = (S.scores && S.scores.p2) || 0;
-      hudNameP1.textContent = S.mode === 'single' ? 'You' : 'P1';
-      hudNameP2.textContent = S.mode === 'single' ? 'CPU' : 'P2';
-      const atk = getAttacker();
-      if(atk && typeof atk.lives !== 'undefined'){
-        hudLives.textContent = '●'.repeat(Math.max(0, atk.lives)) + '○'.repeat(Math.max(0, cfg.livesStart - atk.lives));
-        hudProgress.textContent = (S.placedCount || 0) + ' / ' + cfg.stonesTotal + ' stones';
-      }
-      const def = getDefender() || {id: 'p2'};
+      hudScoreP1.textContent = (S.scores && S.scores.A) || 0;
+      hudScoreP2.textContent = (S.scores && S.scores.B) || 0;
+      hudNameP1.textContent = S.mode === 'single' ? 'You' : 'Team A';
+      hudNameP2.textContent = S.mode === 'single' ? 'CPU' : 'Team B';
+      const atks = getAttackers();
+      hudLives.textContent = atks.length ? atks.map(function(p){ return p.isOut ? '○' : '●'; }).join('') : '—';
+      hudProgress.textContent = (S.placedCount || 0) + ' / ' + cfg.stonesTotal + ' stones';
       if(S.phase === 'aim'){
-        hudHint.textContent = roleName(S.attackerId) + ': line up with the stack and press ACTION to throw';
+        hudHint.textContent = teamLabel(S.attackingTeam) + ' — line up with the stack and press ACTION to throw';
       } else {
-        hudHint.textContent = roleName(S.attackerId) + ': rebuild the stack!  ' + roleName(def.id) + ': press ACTION to throw';
+        hudHint.textContent = teamLabel(S.attackingTeam) + ': rebuild the stack!  ' + teamLabel(otherTeam(S.attackingTeam)) + ': press ACTION to throw';
       }
+      updateRoster();
     } catch(e) {}
   }
+  function updateRoster(){
+    const box = document.getElementById('hud-roster');
+    if(!box) return;
+    const list = (S.playerOrder && S.playerOrder.length) ? S.playerOrder : Object.keys(S.players);
+    box.innerHTML = list.map(function(id){
+      const p = S.players[id];
+      if(!p) return '';
+      const isMe = S.mode !== 'single' && ((S.netRole === 'host' && id === 'p1') || (S.netRole === 'client' && id === S.myId));
+      const label = S.mode === 'single' ? (id === 'p1' ? 'You' : 'CPU') : (isMe ? 'You' : (p.label || id.toUpperCase()));
+      const dotColor = p.team === S.attackingTeam ? '#E8A23D' : '#1B6E6A';
+      const outAtk = (p.team === S.attackingTeam && p.isOut);
+      const style = outAtk ? 'opacity:0.4;text-decoration:line-through;' : '';
+      return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:rgba(243,233,210,0.08);font-size:11px;' + style + '"><span style="width:7px;height:7px;border-radius:50%;background:' + dotColor + ';display:inline-block;"></span>' + label + '</span>';
+    }).join('');
+  }
 
-  /* ---------- Bulletproof Drawing Engine ---------- */
+  /* ---------- drawing ---------- */
   function draw(){
     try {
       if(!canvas.width || !canvas.height) resize();
       const w = window.innerWidth || 800;
       const h = window.innerHeight || 600;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      
+
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#100c1a'; 
+      ctx.fillStyle = '#100c1a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const bg = ctx.createRadialGradient(
@@ -704,16 +732,11 @@
 
       let scale = Math.min(w / V_W, h / V_H);
       if(!isFinite(scale) || scale <= 0) scale = 1;
-      
       const offsetX = (w - V_W * scale) / 2;
       const offsetY = (h - V_H * scale) / 2;
 
       ctx.save();
-      ctx.setTransform(
-        scale * dpr, 0, 
-        0, scale * dpr, 
-        offsetX * dpr, offsetY * dpr
-      );
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, offsetX * dpr, offsetY * dpr);
 
       if (S.shake && typeof S.shake.t === 'number' && S.shake.t > 0) {
         ctx.translate(rand(-1, 1) * (S.shake.mag || 0) * S.shake.t, rand(-1, 1) * (S.shake.mag || 0) * S.shake.t);
@@ -732,8 +755,8 @@
   }
 
   function drawArena(){
-    ctx.fillStyle = '#171224'; 
-    ctx.fillRect(0, 0, V_W, V_H); // Solid bound
+    ctx.fillStyle = '#171224';
+    ctx.fillRect(0, 0, V_W, V_H);
 
     const cg = ctx.createRadialGradient(V_CX, V_CY - V_ARENA_R * 0.3, 10, V_CX, V_CY, V_ARENA_R || 100);
     cg.addColorStop(0, '#C17A48'); cg.addColorStop(1, '#8C5027');
@@ -756,14 +779,12 @@
     ctx.beginPath(); ctx.ellipse(V_CX, V_CY + 4, 40, 16, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
   }
-  
+
   function drawStoneShape(x, y, rx, ry, rot, shade){
     if(!isFinite(x) || !isFinite(y)) return;
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
-    
     const grad = ctx.createLinearGradient(-(rx||1), -(ry||1), (rx||1), (ry||1));
     grad.addColorStop(0, shade[0]); grad.addColorStop(1, shade[1]);
-    
     ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1, rx || 1), Math.max(1, ry || 1), 0, 0, Math.PI * 2);
     ctx.fillStyle = grad; ctx.fill();
     ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.stroke();
@@ -773,7 +794,6 @@
   function drawStones(){
     const shadeStack = ['#F0B968', '#C77E22'];
     const shadeGround = ['#E8CBA0', '#B98A52'];
-    
     (S.stones || []).forEach(function(s){
       if(!s) return;
       if(s.state === 'stacked' || s.state === 'placed'){
@@ -796,18 +816,21 @@
   }
 
   function drawPlayers(){
-    [S.players.p1, S.players.p2].forEach(function(p){
+    activePlayers().forEach(function(p){
       if(!p || !isFinite(p.x) || !isFinite(p.y)) return;
-      const color = p.id === S.attackerId ? COLORS.attacker : COLORS.defender;
+      const isOutAtk = (p.team === S.attackingTeam && p.isOut);
+      ctx.save();
+      if(isOutAtk) ctx.globalAlpha = 0.3;
+      const color = p.team === S.attackingTeam ? COLORS.attacker : COLORS.defender;
       const rad = p.r || cfg.playerR;
-      
+
       ctx.beginPath(); ctx.ellipse(p.x, p.y + rad * 0.7, Math.max(1, rad * 0.9), Math.max(1, rad * 0.4), 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill();
 
       if(p.carrying != null){ drawStoneShape(p.x, p.y - 30, 18, 10, 0, ['#F0B968', '#C77E22']); }
 
       ctx.save();
-      if((p.invulnT || 0) > 0 || (p.dodgeT || 0) > 0){ ctx.globalAlpha = 0.55 + 0.35 * Math.sin((S.time || 0) * 20); }
+      if((p.invulnT || 0) > 0 || (p.dodgeT || 0) > 0){ ctx.globalAlpha = (isOutAtk?0.3:1) * (0.55 + 0.35 * Math.sin((S.time || 0) * 20)); }
       ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fillStyle = (p.hitFlashT || 0) > 0 ? '#ffffff' : color;
       ctx.fill();
@@ -819,7 +842,10 @@
       ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fillStyle = '#F3E9D2'; ctx.fill();
 
       ctx.font = '700 16px Mukta, sans-serif'; ctx.fillStyle = '#F3E9D2'; ctx.textAlign = 'center';
-      ctx.fillText(S.mode === 'single' ? (p.id === 'p1' ? 'You' : 'CPU') : (p.label || ''), p.x, p.y - rad - 12);
+      const isMe = S.mode !== 'single' && ((S.netRole === 'host' && p.id === 'p1') || (S.netRole === 'client' && p.id === S.myId));
+      const label = S.mode === 'single' ? (p.id === 'p1' ? 'You' : 'CPU') : (isMe ? 'You' : (p.label || p.id.toUpperCase()));
+      ctx.fillText(label + (isOutAtk ? ' (out)' : ''), p.x, p.y - rad - 12);
+      ctx.restore();
     });
   }
 
@@ -827,17 +853,15 @@
     (S.balls || []).forEach(function(b){
       if(!b || !isFinite(b.x) || !isFinite(b.y)) return;
       const rad = b.r || cfg.ballR;
-      
       if(b.history && b.history.length > 0){
         ctx.beginPath();
         ctx.moveTo(b.history[0].x || 0, b.history[0].y || 0);
         for(let j=1; j<b.history.length; j++){ ctx.lineTo(b.history[j].x || 0, b.history[j].y || 0); }
-        const trailColor = b.owner === 'neutral' ? 'rgba(255,255,255,0.4)' : 
-                          (b.owner === S.attackerId ? 'rgba(232,162,61,0.5)' : 'rgba(27,110,106,0.5)');
+        const trailColor = b.owner === 'neutral' ? 'rgba(255,255,255,0.4)' :
+          ((S.players[b.owner] && S.players[b.owner].team === S.attackingTeam) ? 'rgba(232,162,61,0.5)' : 'rgba(27,110,106,0.5)');
         ctx.strokeStyle = trailColor;
         ctx.lineWidth = rad * 1.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.stroke();
       }
       ctx.beginPath(); ctx.ellipse(b.x, b.y + 12, Math.max(1, rad * 1.2), Math.max(1, rad * 0.6), 0, 0, Math.PI * 2);
@@ -860,240 +884,298 @@
     });
   }
 
-  /* ---------- inputs & network mapping ---------- */
-  const P1MAP = {KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', Space: 'action'};
-  const P2MAP = {ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'action'};
-
+  /* ---------- keyboard input (unified — works for whichever local player this device controls) ---------- */
+  const KEYMAP = {
+    KeyW:'up', ArrowUp:'up', KeyS:'down', ArrowDown:'down',
+    KeyA:'left', ArrowLeft:'left', KeyD:'right', ArrowRight:'right',
+    Space:'action', Enter:'action'
+  };
   window.addEventListener('keydown', function(e){
     if(e.repeat) return;
     if(e.code === 'Escape'){ togglePause(); return; }
     if(S.screen !== 'playing') return;
+    const k = KEYMAP[e.code];
+    if(!k) return;
+    e.preventDefault();
     ensureAudio();
-    
     if(S.isOnline && S.netRole === 'client'){
-      const action = P1MAP[e.code] || P2MAP[e.code];
-      if(action){
-        e.preventDefault();
-        if(action === 'action') S.conn.send({type: 'action'});
-        else S.conn.send({type: 'input', key: action, val: true});
-      }
+      if(!S.conn || !S.conn.open) return;
+      if(k === 'action') S.conn.send({type:'action'});
+      else S.conn.send({type:'input', key:k, val:true});
       return;
     }
-
-    const c1 = P1MAP[e.code];
-    if(c1){ e.preventDefault(); if(c1 === 'action') handleAction(S.players.p1); else if(S.players.p1) S.players.p1.controls[c1] = true; }
-    
-    if(S.mode === 'multi' && !S.isOnline){
-      const c2 = P2MAP[e.code];
-      if(c2){ e.preventDefault(); if(c2 === 'action') handleAction(S.players.p2); else if(S.players.p2) S.players.p2.controls[c2] = true; }
-    }
+    const lp = getLocalPlayer();
+    if(!lp) return;
+    if(k === 'action') handleAction(lp); else lp.controls[k] = true;
   });
-
   window.addEventListener('keyup', function(e){
+    const k = KEYMAP[e.code];
+    if(!k || k === 'action') return;
     if(S.isOnline && S.netRole === 'client'){
-      const action = P1MAP[e.code] || P2MAP[e.code];
-      if(action && action !== 'action') S.conn.send({type: 'input', key: action, val: false});
+      if(S.conn && S.conn.open) S.conn.send({type:'input', key:k, val:false});
       return;
     }
-    const c1 = P1MAP[e.code]; if(c1 && c1 !== 'action' && S.players.p1) S.players.p1.controls[c1] = false;
-    if(!S.isOnline){
-      const c2 = P2MAP[e.code]; if(c2 && c2 !== 'action' && S.players.p2) S.players.p2.controls[c2] = false;
-    }
+    const lp = getLocalPlayer();
+    if(lp) lp.controls[k] = false;
   });
 
-  // Analog Virtual Joystick logic
-  function bindJoystick(zoneEl, knobEl, player) {
+  /* ---------- touch: single joystick + action button, always controls "my" player ---------- */
+  function bindJoystick(zoneEl, knobEl){
     let activeId = null;
-    let lastNetworkSend = 0;
-
-    function updateJoy(ev) {
+    let lastSend = 0;
+    function updateJoy(ev){
       if(activeId !== ev.pointerId) return;
-      
       const zRect = zoneEl.getBoundingClientRect();
       const zRadius = zRect.width / 2;
-      const zCx = zRect.left + zRadius;
-      const zCy = zRect.top + zRadius;
-
-      let dx = ev.clientX - zCx;
-      let dy = ev.clientY - zCy;
-      const dist = Math.hypot(dx, dy);
-
-      if (dist > zRadius) {
-        dx = (dx / dist) * zRadius;
-        dy = (dy / dist) * zRadius;
-      }
-
-      knobEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-
-      const normX = dx / zRadius;
-      const normY = dy / zRadius;
-
-      if (S.isOnline && S.netRole === 'client') {
+      const zCx = zRect.left + zRadius, zCy = zRect.top + zRadius;
+      let dx = ev.clientX - zCx, dy = ev.clientY - zCy;
+      const d = Math.hypot(dx, dy);
+      if(d > zRadius){ dx = (dx / d) * zRadius; dy = (dy / d) * zRadius; }
+      knobEl.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+      const nx = dx / zRadius, ny = dy / zRadius;
+      if(S.isOnline && S.netRole === 'client'){
         const now = performance.now();
-        // Throttle sending slightly to avoid packet overflow
-        if (now - lastNetworkSend > 30) {
-          S.conn.send({type: 'joy', x: normX, y: normY});
-          lastNetworkSend = now;
+        if(now - lastSend > 30){
+          if(S.conn && S.conn.open) S.conn.send({type:'joy', x:nx, y:ny});
+          lastSend = now;
         }
-      } else if (player) {
-        player.controls.joyDx = normX;
-        player.controls.joyDy = normY;
+      } else {
+        const lp = getLocalPlayer();
+        if(lp){ lp.controls.joyDx = nx; lp.controls.joyDy = ny; }
       }
     }
-
-    zoneEl.addEventListener('pointerdown', ev => {
+    zoneEl.addEventListener('pointerdown', function(ev){
       ev.preventDefault();
-      if (activeId !== null) return;
+      if(activeId !== null) return;
       activeId = ev.pointerId;
-      zoneEl.setPointerCapture(activeId);
+      try{ zoneEl.setPointerCapture(activeId); }catch(e){}
       updateJoy(ev);
       ensureAudio();
     });
-
-    zoneEl.addEventListener('pointermove', ev => {
-      if (activeId === ev.pointerId) updateJoy(ev);
-    });
-
-    function stopJoy(ev) {
-      if (activeId !== ev.pointerId) return;
+    zoneEl.addEventListener('pointermove', function(ev){ if(activeId === ev.pointerId) updateJoy(ev); });
+    function stopJoy(ev){
+      if(activeId !== ev.pointerId) return;
       activeId = null;
-      knobEl.style.transform = `translate(-50%, -50%)`;
-      
-      if (S.isOnline && S.netRole === 'client') {
-        S.conn.send({type: 'joy', x: 0, y: 0});
-      } else if (player) {
-        player.controls.joyDx = 0;
-        player.controls.joyDy = 0;
+      knobEl.style.transform = 'translate(-50%, -50%)';
+      if(S.isOnline && S.netRole === 'client'){
+        if(S.conn && S.conn.open) S.conn.send({type:'joy', x:0, y:0});
+      } else {
+        const lp = getLocalPlayer();
+        if(lp){ lp.controls.joyDx = 0; lp.controls.joyDy = 0; }
       }
     }
-
     zoneEl.addEventListener('pointerup', stopJoy);
     zoneEl.addEventListener('pointercancel', stopJoy);
   }
-
-  function bindTouchAction(el, player){
-    el.addEventListener('pointerdown', function(ev){ ev.preventDefault(); ensureAudio(); 
-      if(S.isOnline && S.netRole === 'client') S.conn.send({type: 'action'});
-      else if (player) handleAction(player); 
-    });
-  }
-
-  /* ---------- online multiplayer logic ---------- */
-  function applyPlayerState(p, pSt) {
-    if(!p || !pSt) return;
-    if (pSt.x != null) p.x = pSt.x; 
-    if (pSt.y != null) p.y = pSt.y; 
-    if (pSt.facing) {
-      if (pSt.facing.x != null) p.facing.x = pSt.facing.x; 
-      if (pSt.facing.y != null) p.facing.y = pSt.facing.y;
-    }
-    if (pSt.lives != null) p.lives = pSt.lives; 
-    if (pSt.carrying !== undefined) p.carrying = pSt.carrying; 
-    if (pSt.hitFlashT != null) p.hitFlashT = pSt.hitFlashT; 
-    if (pSt.dodgeT != null) p.dodgeT = pSt.dodgeT;
-  }
-
-  function setupConnection(c) {
-    c.on('data', data => {
-      try {
-        if (S.isOnline && S.netRole === 'host') {
-          if (data.type === 'input' && S.players.p2) S.players.p2.controls[data.key] = data.val;
-          if (data.type === 'joy' && S.players.p2) { S.players.p2.controls.joyDx = data.x; S.players.p2.controls.joyDy = data.y; }
-          if (data.type === 'action' && S.players.p2) handleAction(S.players.p2);
-        } 
-        else if (S.isOnline && S.netRole === 'client') {
-          if (data.type === 'state') {
-            const st = data.state;
-            if(!st) return;
-            S.phase = st.phase || 'aim'; 
-            S.attackerId = st.attackerId || 'p1'; 
-            S.scores = st.scores || {p1:0, p2:0}; 
-            S.round = st.round || 1; 
-            S.placedCount = st.placedCount || 0; 
-            S.shake = st.shake || {t:0, mag:0}; 
-            S.winnerId = st.winnerId;
-            
-            if(st.players && S.players.p1 && S.players.p2) {
-              applyPlayerState(S.players.p1, st.players.p1);
-              applyPlayerState(S.players.p2, st.players.p2);
-            }
-            
-            S.balls = Array.isArray(st.balls) ? st.balls : [];
-            S.stones = Array.isArray(st.stones) ? st.stones : []; 
-            S.particles = Array.isArray(st.particles) ? st.particles : [];
-            
-            if (st.screen === 'playing' && S.screen !== 'playing') {
-              S.screen = 'playing'; hideOverlays();
-              document.getElementById('p1-touch').style.display = 'none'; 
-              document.getElementById('p2-touch').style.display = 'flex'; 
-            } else if (st.screen === 'gameOver' && S.screen !== 'gameOver') {
-              S.screen = 'gameOver'; showGameOver(S.winnerId);
-            } else if (st.screen === 'roundEnd') {
-              S.screen = 'roundEnd';
-            }
-            updateHUD();
-          }
-          if (data.audio && Array.isArray(data.audio)) data.audio.forEach(a => playSound(a));
-          if (data.toasts && Array.isArray(data.toasts)) data.toasts.forEach(t => showToast(t.text, t.duration));
-        }
-      } catch (e) {
-        console.warn("Network payload parsing issue bypassed:", e);
+  function bindActionButton(el){
+    el.addEventListener('pointerdown', function(ev){
+      ev.preventDefault(); ensureAudio();
+      if(S.isOnline && S.netRole === 'client'){
+        if(S.conn && S.conn.open) S.conn.send({type:'action'});
+      } else {
+        const lp = getLocalPlayer();
+        if(lp) handleAction(lp);
       }
     });
-    c.on('close', () => {
-      showToast("Connection lost", 3);
+  }
+
+  /* ---------- online multiplayer: lobby + up to 6 players ---------- */
+  function applyPlayerState(p, pSt){
+    if(!p || !pSt) return;
+    if(pSt.x != null) p.x = pSt.x;
+    if(pSt.y != null) p.y = pSt.y;
+    if(pSt.facing){ if(pSt.facing.x != null) p.facing.x = pSt.facing.x; if(pSt.facing.y != null) p.facing.y = pSt.facing.y; }
+    if(pSt.team != null) p.team = pSt.team;
+    if(pSt.isOut != null) p.isOut = pSt.isOut;
+    if(pSt.isAI != null) p.isAI = pSt.isAI;
+    if(pSt.carrying !== undefined) p.carrying = pSt.carrying;
+    if(pSt.hitFlashT != null) p.hitFlashT = pSt.hitFlashT;
+    if(pSt.dodgeT != null) p.dodgeT = pSt.dodgeT;
+    if(pSt.invulnT != null) p.invulnT = pSt.invulnT;
+    if(pSt.label) p.label = pSt.label;
+    if(pSt.r != null) p.r = pSt.r;
+  }
+
+  function showLobby(){
+    showOverlay('overlay-lobby');
+    const linkRow = document.getElementById('lobby-linkrow');
+    if(linkRow) linkRow.style.display = (S.netRole === 'host') ? 'flex' : 'none';
+    renderLobbyPlayers();
+  }
+  function renderLobbyPlayers(){
+    const box = document.getElementById('lobby-players');
+    if(box){
+      box.innerHTML = S.playerOrder.map(function(id){
+        const p = S.players[id];
+        const isMe = (S.netRole === 'host' && id === 'p1') || (S.netRole === 'client' && id === S.myId);
+        const tag = id === 'p1' ? ' — host' : '';
+        return '<div class="lobby-player-row"><span class="team-dot"></span>' + (isMe ? 'You' : (p ? p.label : id.toUpperCase())) + tag + '</div>';
+      }).join('');
+    }
+    const startBtn = document.getElementById('btn-start-game');
+    if(startBtn) startBtn.style.display = (S.netRole === 'host' && S.playerOrder.length >= 2) ? 'block' : 'none';
+    const status = document.getElementById('lobby-status');
+    if(status){
+      status.textContent = S.netRole === 'host'
+        ? (S.playerOrder.length + ' / ' + MAX_PLAYERS + ' joined — start once you have at least 2 players.')
+        : ('Waiting for the host to start… (' + S.playerOrder.length + ' / ' + MAX_PLAYERS + ' joined)');
+    }
+  }
+  function broadcastLobby(){
+    const payload = {type:'lobby', playerOrder: S.playerOrder};
+    Object.keys(S.conns).forEach(function(id){
+      const c = S.conns[id];
+      if(c && c.open){ try{ c.send(payload); }catch(e){} }
+    });
+  }
+  function ensureClientPlayers(){
+    S.playerOrder.forEach(function(id){ if(!S.players[id]) S.players[id] = newPlayer(id, id.toUpperCase()); });
+  }
+  function assignTeams(){
+    S.playerOrder.forEach(function(id, idx){ S.players[id].team = (idx % 2 === 0) ? 'A' : 'B'; });
+    S.attackingTeam = 'A';
+  }
+  function removePlayerFromMatch(id){
+    delete S.conns[id];
+    const wasMatchStarted = S.matchStarted;
+    S.playerOrder = S.playerOrder.filter(function(x){ return x !== id; });
+    delete S.players[id];
+    if(!wasMatchStarted){
+      renderLobbyPlayers(); broadcastLobby();
+      return;
+    }
+    if(getAttackers().length === 0){ endRound('defenders'); }
+    else if(getDefenders().length === 0){ endRound('attackers'); }
+  }
+
+  function setupHostConnection(c, playerId){
+    c.on('data', function(data){
+      try{
+        const p = S.players[playerId];
+        if(!p) return;
+        if(data.type === 'input') p.controls[data.key] = data.val;
+        if(data.type === 'joy'){ p.controls.joyDx = data.x; p.controls.joyDy = data.y; }
+        if(data.type === 'action') handleAction(p);
+      }catch(e){ console.warn(e); }
+    });
+    c.on('close', function(){ removePlayerFromMatch(playerId); });
+  }
+  function setupClientConnection(c){
+    c.on('data', function(data){
+      try{
+        if(data.type === 'assign'){
+          S.myId = data.id;
+          renderLobbyPlayers();
+        } else if(data.type === 'lobby'){
+          S.playerOrder = data.playerOrder || ['p1'];
+          ensureClientPlayers();
+          renderLobbyPlayers();
+        } else if(data.type === 'full'){
+          const status = document.getElementById('lobby-status');
+          if(status) status.textContent = 'Room is full (max ' + MAX_PLAYERS + ' players).';
+        } else if(data.type === 'state'){
+          const st = data.state;
+          if(!st) return;
+          S.phase = st.phase || 'aim';
+          S.attackingTeam = st.attackingTeam || 'A';
+          S.scores = st.scores || {A:0, B:0};
+          S.round = st.round || 1;
+          S.placedCount = st.placedCount || 0;
+          S.shake = st.shake || {t:0, mag:0};
+          S.winnerTeam = st.winnerTeam;
+          if(st.playerOrder) S.playerOrder = st.playerOrder;
+          if(st.players){
+            Object.keys(st.players).forEach(function(id){
+              if(!S.players[id]) S.players[id] = newPlayer(id, id.toUpperCase());
+              applyPlayerState(S.players[id], st.players[id]);
+            });
+          }
+          S.balls = Array.isArray(st.balls) ? st.balls : [];
+          S.stones = Array.isArray(st.stones) ? st.stones : [];
+          S.particles = Array.isArray(st.particles) ? st.particles : [];
+
+          if(st.screen === 'playing' && S.screen !== 'playing'){
+            S.screen = 'playing'; hideOverlays();
+            const tc = document.getElementById('touch-controls');
+            if(tc) tc.style.display = 'flex';
+          } else if(st.screen === 'gameOver' && S.screen !== 'gameOver'){
+            S.screen = 'gameOver'; showGameOver(S.winnerTeam);
+          } else if(st.screen === 'roundEnd'){
+            S.screen = 'roundEnd';
+          }
+          updateHUD();
+        }
+        if(data.audio && Array.isArray(data.audio)) data.audio.forEach(function(a){ playSound(a); });
+        if(data.toasts && Array.isArray(data.toasts)) data.toasts.forEach(function(t){ showToast(t.text, t.duration); });
+      }catch(e){ console.warn('Network payload issue bypassed:', e); }
+    });
+    c.on('close', function(){
+      showToast('Connection lost', 3);
       setTimeout(backToMenu, 3000);
     });
   }
 
-  function initOnlineHost(btnEl) {
-    btnEl.innerHTML = 'Creating Room...<small>Connecting to server</small>';
+  function tryCopyLink(link){
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(link).catch(function(){}); }
+    }catch(e){}
+  }
+
+  function initOnlineHost(btnEl){
+    if(btnEl) btnEl.disabled = true;
+    S.mode = 'multi'; S.isOnline = true; S.netRole = 'host'; S.myId = 'p1';
+    S.playerOrder = ['p1'];
+    if(!S.players.p1) S.players.p1 = newPlayer('p1', 'P1');
+    showLobby();
+    const status = document.getElementById('lobby-status');
+    if(status) status.textContent = 'Creating room…';
+
     S.peer = new Peer();
-    S.peer.on('open', id => {
+    S.peer.on('open', function(id){
       const url = new URL(window.location.href);
       url.hash = 'room-' + id;
       const link = url.href;
-      
-      if(navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(link).catch(() => {});
-      } else {
-        setTimeout(() => prompt("Copy link to send:", link), 300);
-      }
-      
-      btnEl.innerHTML = 'Waiting for Friend...<small>Link copied to clipboard!</small>';
-      showToast("Link copied! Send it to your friend.", 4);
+      const linkInput = document.getElementById('lobby-link');
+      if(linkInput) linkInput.value = link;
+      tryCopyLink(link);
+      renderLobbyPlayers();
     });
-    
-    S.peer.on('connection', connection => {
-      S.conn = connection;
-      S.isOnline = true; S.netRole = 'host';
-      document.getElementById('p2-touch').style.display = 'none'; 
-      document.getElementById('p1-touch').style.display = 'flex'; 
-      setupConnection(S.conn);
-      
-      S.conn.on('open', () => {
-        showToast("Player 2 Joined!", 2);
-        startMatch('multi');
+    S.peer.on('connection', function(connection){
+      if(S.matchStarted || S.playerOrder.length >= MAX_PLAYERS){
+        connection.on('open', function(){ try{ connection.send({type:'full'}); }catch(e){} });
+        return;
+      }
+      const newId = 'p' + (S.playerOrder.length + 1);
+      S.playerOrder.push(newId);
+      if(!S.players[newId]) S.players[newId] = newPlayer(newId, newId.toUpperCase());
+      S.conns[newId] = connection;
+      setupHostConnection(connection, newId);
+      connection.on('open', function(){
+        try{ connection.send({type:'assign', id:newId}); }catch(e){}
+        renderLobbyPlayers();
+        broadcastLobby();
+        showToast(newId.toUpperCase() + ' joined!', 2);
       });
+    });
+    S.peer.on('error', function(err){
+      if(status) status.textContent = 'Connection error: ' + (err && err.type ? err.type : 'unknown');
     });
   }
 
-  function initOnlineClient(hostId) {
-    const modesEl = document.getElementById('menu-modes');
-    const diffEl = document.getElementById('menu-difficulty');
-    if(modesEl) modesEl.style.display = 'none';
-    if(diffEl) diffEl.style.display = 'none';
-    const status = document.getElementById('conn-status');
-    if(status){ status.textContent = 'Connecting to host…'; status.style.display = 'block'; }
+  function initOnlineClient(hostId){
+    S.mode = 'multi'; S.isOnline = true; S.netRole = 'client'; S.myId = null;
+    S.playerOrder = ['p1'];
+    if(!S.players.p1) S.players.p1 = newPlayer('p1', 'P1');
+    showLobby();
+    const status = document.getElementById('lobby-status');
+    if(status) status.textContent = 'Connecting to host…';
 
     S.peer = new Peer();
-    S.peer.on('open', () => {
-      S.conn = S.peer.connect(hostId, { reliable: true });
-      S.isOnline = true; S.netRole = 'client'; S.mode = 'multi';
-      setupConnection(S.conn);
-      if(status) status.textContent = 'Connected! Waiting for the host to start…';
+    S.peer.on('open', function(){
+      S.conn = S.peer.connect(hostId, {reliable:true});
+      setupClientConnection(S.conn);
     });
-    S.peer.on('error', (err) => {
+    S.peer.on('error', function(err){
       if(status) status.textContent = 'Connection failed (' + (err && err.type ? err.type : 'unknown') + '). Ask for a fresh link and reload.';
     });
   }
@@ -1110,74 +1192,81 @@
   function hideOverlays(){
     document.querySelectorAll('.overlay').forEach(function(o){ o.classList.remove('visible'); });
   }
-  function showGameOver(winnerId){
+  function showGameOver(winnerTeam){
     const t = document.getElementById('gameover-title');
     const s = document.getElementById('gameover-sub');
     if(S.mode === 'single'){
-      t.textContent = winnerId === 'p1' ? 'PITHU! You win the match' : 'CPU wins the match';
+      t.textContent = winnerTeam === 'A' ? 'PITHU! You win the match' : 'CPU wins the match';
     } else {
-      t.textContent = roleName(winnerId) + ' wins the match!';
+      t.textContent = (winnerTeam === myTeam()) ? 'Your team wins the match!' : 'Team ' + winnerTeam + ' wins the match!';
     }
-    s.textContent = 'Final score ' + (S.scores.p1||0) + ' – ' + (S.scores.p2||0);
+    s.textContent = 'Final score — Team A ' + ((S.scores && S.scores.A) || 0) + ' · Team B ' + ((S.scores && S.scores.B) || 0);
     showOverlay('overlay-gameover');
   }
 
   function startMatch(mode){
     ensureAudio();
-    S.mode = mode; S.scores = {p1:0, p2:0}; S.round = 1; S.attackerId = 'p1';
-    if(S.players.p2) S.players.p2.isAI = (mode === 'single');
-    hideOverlays();
-    
-    if(!S.isOnline) {
-      document.getElementById('p2-touch').style.display = mode === 'multi' ? 'flex' : 'none';
-      document.getElementById('p1-touch').style.display = 'flex';
+    S.mode = mode; S.scores = {A:0, B:0}; S.round = 1;
+    if(mode === 'single'){
+      S.playerOrder = ['p1', 'p2'];
+      if(!S.players.p2) S.players.p2 = newPlayer('p2', 'CPU');
+      S.players.p1.team = 'A'; S.players.p2.team = 'B'; S.players.p2.isAI = true;
+      S.attackingTeam = 'A';
+    } else {
+      S.playerOrder.forEach(function(id){ if(S.players[id]) S.players[id].isAI = false; });
     }
-    
+    hideOverlays();
+    const tc = document.getElementById('touch-controls');
+    if(tc) tc.style.display = 'flex';
     startRound();
     S.screen = 'playing';
     updateHUD();
   }
   function backToMenu(){
-    window.location.hash = ''; 
-    window.location.reload(); 
+    window.location.hash = '';
+    window.location.reload();
   }
 
-  /* ---------- game loop ---------- */
-  function buildNetworkState() {
+  /* ---------- networked state build ---------- */
+  function buildNetworkState(){
+    const playersOut = {};
+    S.playerOrder.forEach(function(id){
+      const p = S.players[id];
+      if(!p) return;
+      playersOut[id] = {
+        x:p.x, y:p.y, r:p.r, facing:p.facing, team:p.team, isOut:p.isOut, isAI:p.isAI,
+        carrying:p.carrying, hitFlashT:p.hitFlashT, dodgeT:p.dodgeT, invulnT:p.invulnT, label:p.label
+      };
+    });
     return {
-      phase: S.phase, attackerId: S.attackerId, scores: S.scores, round: S.round, placedCount: S.placedCount, shake: S.shake, winnerId: S.winnerId, screen: S.screen,
-      players: {
-        p1: S.players.p1 ? {x: S.players.p1.x, y: S.players.p1.y, r: S.players.p1.r, facing: S.players.p1.facing, lives: S.players.p1.lives, carrying: S.players.p1.carrying, hitFlashT: S.players.p1.hitFlashT, dodgeT: S.players.p1.dodgeT} : null,
-        p2: S.players.p2 ? {x: S.players.p2.x, y: S.players.p2.y, r: S.players.p2.r, facing: S.players.p2.facing, lives: S.players.p2.lives, carrying: S.players.p2.carrying, hitFlashT: S.players.p2.hitFlashT, dodgeT: S.players.p2.dodgeT} : null
-      },
-      balls: (S.balls || []).map(b => ({x: b.x, y: b.y, r: b.r, owner: b.owner, history: b.history ? b.history.slice(-5) : []})),
-      stones: (S.stones || []).map(s => ({i: s.i, state: s.state, x: s.x, y: s.y, z: s.z || 0, rot: s.rot || 0, landed: s.landed, placedIndex: s.placedIndex, animT: s.animT || 0})),
-      particles: (S.particles || []).map(p => ({x: p.x, y: p.y, r: p.r, life: p.life, maxLife: p.maxLife}))
+      phase:S.phase, attackingTeam:S.attackingTeam, scores:S.scores, round:S.round,
+      placedCount:S.placedCount, shake:S.shake, winnerTeam:S.winnerTeam, screen:S.screen,
+      playerOrder:S.playerOrder, players:playersOut,
+      balls:(S.balls || []).map(function(b){ return {x:b.x, y:b.y, r:b.r, owner:b.owner, history: b.history ? b.history.slice(-5) : []}; }),
+      stones:(S.stones || []).map(function(s){ return {i:s.i, state:s.state, x:s.x, y:s.y, z:s.z||0, rot:s.rot||0, landed:s.landed, placedIndex:s.placedIndex, animT:s.animT||0}; }),
+      particles:(S.particles || []).map(function(p){ return {x:p.x, y:p.y, r:p.r, life:p.life, maxLife:p.maxLife}; })
     };
   }
 
+  /* ---------- main loop ---------- */
   function loop(ts){
-    requestAnimationFrame(loop); 
-    
-    if (!S.lastTime) S.lastTime = ts; 
+    requestAnimationFrame(loop);
+    if(!S.lastTime) S.lastTime = ts;
     const dt = Math.min(0.033, (ts - S.lastTime) / 1000 || 0);
     S.lastTime = ts; S.time += dt;
-    
+
     if(S.screen === 'playing'){
-      if(!S.isOnline || S.netRole === 'host') {
-        [S.players.p1, S.players.p2].forEach(function(p){
-          if(!p) return;
+      if(!S.isOnline || S.netRole === 'host'){
+        activePlayers().forEach(function(p){
           p.throwCdT = Math.max(0, p.throwCdT - dt);
           p.dodgeCdT = Math.max(0, p.dodgeCdT - dt);
           p.dodgeT = Math.max(0, p.dodgeT - dt);
           p.invulnT = Math.max(0, p.invulnT - dt);
           p.hitFlashT = Math.max(0, p.hitFlashT - dt);
         });
-        if(S.players.p1 && !S.players.p1.isAI) updateHuman(S.players.p1, dt);
-        if(S.players.p2 && !S.players.p2.isAI) updateHuman(S.players.p2, dt);
-        if(S.players.p1 && S.players.p1.isAI) updateAI(S.players.p1, dt);
-        if(S.players.p2 && S.players.p2.isAI) updateAI(S.players.p2, dt);
-        
+        activePlayers().forEach(function(p){
+          if(p.isAI) updateAI(p, dt); else updateHuman(p, dt);
+        });
         updateStones(dt);
         updatePickupDeposit();
         updateBalls(dt);
@@ -1185,18 +1274,16 @@
         if(S.shake && S.shake.t > 0) S.shake.t = Math.max(0, S.shake.t - dt);
         updateHUD();
 
-        if(S.isOnline && S.conn && S.conn.open) {
+        if(S.isOnline && S.netRole === 'host'){
           S.netTimer += dt;
-          if(S.netTimer > 0.033) { 
+          if(S.netTimer > 0.033){
             S.netTimer = 0;
-            S.conn.send({
-              type: 'state',
-              state: buildNetworkState(),
-              audio: S.audioQueue,
-              toasts: S.toastQueue
+            const payload = {type:'state', state: buildNetworkState(), audio: S.audioQueue, toasts: S.toastQueue};
+            Object.keys(S.conns).forEach(function(id){
+              const c = S.conns[id];
+              if(c && c.open){ try{ c.send(payload); }catch(e){} }
             });
-            S.audioQueue = [];
-            S.toastQueue = [];
+            S.audioQueue = []; S.toastQueue = [];
           }
         }
       }
@@ -1209,7 +1296,7 @@
       initPlayers();
       resize();
 
-      if(window.location.hash && window.location.hash.startsWith('#room-')) {
+      if(window.location.hash && window.location.hash.startsWith('#room-')){
         const hostId = window.location.hash.replace('#room-', '');
         initOnlineClient(hostId);
       }
@@ -1219,11 +1306,8 @@
         document.getElementById('menu-modes').style.display = 'none';
         document.getElementById('menu-difficulty').style.display = 'flex';
       });
-
       const btnMulti = document.getElementById('btn-multi');
-      if(btnMulti) btnMulti.addEventListener('click', function(e){
-        initOnlineHost(e.currentTarget);
-      });
+      if(btnMulti) btnMulti.addEventListener('click', function(e){ initOnlineHost(e.currentTarget); });
 
       document.querySelectorAll('.diff-btn').forEach(function(b){
         b.addEventListener('click', function(){ S.difficulty = b.dataset.diff; startMatch('single'); });
@@ -1246,18 +1330,31 @@
       const btnPlayAgain = document.getElementById('btn-playagain');
       if(btnPlayAgain) btnPlayAgain.addEventListener('click', function(){ hideOverlays(); startMatch(S.mode); });
 
-      // Init analog joystick for P1
-      const joyZoneP1 = document.getElementById('joy-p1');
-      const joyKnobP1 = document.getElementById('knob-p1');
-      if (joyZoneP1 && joyKnobP1) bindJoystick(joyZoneP1, joyKnobP1, S.players.p1);
-      document.querySelectorAll('[data-p1action]').forEach(function(el){ bindTouchAction(el, S.players.p1); });
+      const btnCopyLink = document.getElementById('btn-copy-link');
+      if(btnCopyLink) btnCopyLink.addEventListener('click', function(){
+        const inp = document.getElementById('lobby-link');
+        if(!inp) return;
+        inp.focus(); inp.select();
+        try{ document.execCommand('copy'); }catch(e){}
+        tryCopyLink(inp.value);
+        btnCopyLink.textContent = 'Copied!';
+        setTimeout(function(){ btnCopyLink.textContent = 'Copy'; }, 1200);
+      });
+      const btnStartGame = document.getElementById('btn-start-game');
+      if(btnStartGame) btnStartGame.addEventListener('click', function(){
+        if(S.playerOrder.length < 2) return;
+        assignTeams();
+        S.matchStarted = true;
+        startMatch('multi');
+      });
+      const btnLobbyLeave = document.getElementById('btn-lobby-leave');
+      if(btnLobbyLeave) btnLobbyLeave.addEventListener('click', backToMenu);
 
-      // Init analog joystick for P2
-      const joyZoneP2 = document.getElementById('joy-p2');
-      const joyKnobP2 = document.getElementById('knob-p2');
-      if (joyZoneP2 && joyKnobP2) bindJoystick(joyZoneP2, joyKnobP2, S.players.p2);
-      document.querySelectorAll('[data-p2action]').forEach(function(el){ bindTouchAction(el, S.players.p2); });
-
+      const joyZone = document.getElementById('joy-zone');
+      const joyKnob = document.getElementById('joy-knob');
+      if(joyZone && joyKnob) bindJoystick(joyZone, joyKnob);
+      const btnAction = document.getElementById('btn-action');
+      if(btnAction) bindActionButton(btnAction);
     } catch(setupErr) {
       console.error('Setup error (continuing anyway):', setupErr);
     } finally {
