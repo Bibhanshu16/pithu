@@ -317,12 +317,12 @@
       <div id="menu-modes">
         <div class="mode-cards">
           <div class="mode-card" id="btn-single">
-            <!-- <div class="mode-icon">👤</div> -->
+            <div class="mode-icon">👤</div>
             <h3>Single Player</h3>
             <p>You vs CPU Bots</p>
           </div>
           <div class="mode-card" id="btn-host">
-            <!-- <div class="mode-icon">🏠</div> -->
+            <div class="mode-icon">🏠</div>
             <h3>Create Room</h3>
             <p>Host a multiplayer game</p>
           </div>
@@ -1079,10 +1079,43 @@
 
   /* ---------- Inputs ---------- */
   const KEYMAP = { KeyW:'up', ArrowUp:'up', KeyS:'down', ArrowDown:'down', KeyA:'left', ArrowLeft:'left', KeyD:'right', ArrowRight:'right', Space:'action', Enter:'action' };
+  
+  function togglePause(){
+    // Only allow pause toggle if a match is actively running or currently paused.
+    if (S.screen !== 'playing' && S.screen !== 'paused') return;
+
+    if (S.isOnline && S.netRole === 'client') {
+      const pauseOverlay = document.getElementById('overlay-pause');
+      if (pauseOverlay.classList.contains('visible')) {
+        pauseOverlay.classList.remove('visible');
+      } else {
+        showOverlay('overlay-pause');
+        document.getElementById('btn-restart').style.display = 'none';
+        document.getElementById('btn-mainmenu').textContent = 'Leave Match';
+      }
+    } else {
+      if(S.screen === 'playing'){ 
+        S.screen = 'paused'; 
+        showOverlay('overlay-pause'); 
+        document.getElementById('btn-restart').style.display = 'block';
+        document.getElementById('btn-mainmenu').textContent = 'Main Menu';
+      }
+      else if(S.screen === 'paused'){ 
+        S.screen = 'playing'; 
+        hideOverlays(); 
+      }
+    }
+  }
+
   window.addEventListener('keydown', e => {
     if(e.repeat) return;
     if(e.code === 'Escape'){ togglePause(); return; }
+    
+    const pauseOverlay = document.getElementById('overlay-pause');
+    if(pauseOverlay && pauseOverlay.classList.contains('visible')) return;
+
     if(S.screen !== 'playing') return;
+    
     const k = KEYMAP[e.code]; if(!k) return;
     e.preventDefault(); ensureAudio();
     if(S.isOnline && S.netRole === 'client'){
@@ -1092,6 +1125,7 @@
     const lp = getLocalPlayer();
     if(lp) k === 'action' ? handleAction(lp) : lp.controls[k] = true;
   });
+
   window.addEventListener('keyup', e => {
     const k = KEYMAP[e.code]; if(!k || k === 'action') return;
     if(S.isOnline && S.netRole === 'client'){ if(S.conn && S.conn.open) S.conn.send({type:'input', key:k, val:false}); return; }
@@ -1102,6 +1136,9 @@
     let activeId = null, lastSend = 0;
     function updateJoy(ev){
       if(activeId !== ev.pointerId) return;
+      const pauseOverlay = document.getElementById('overlay-pause');
+      if(pauseOverlay && pauseOverlay.classList.contains('visible')) return;
+
       const zRect = zoneEl.getBoundingClientRect(), zRadius = zRect.width / 2;
       let dx = ev.clientX - (zRect.left + zRadius), dy = ev.clientY - (zRect.top + zRadius);
       const d = Math.hypot(dx, dy); if(d > zRadius){ dx = (dx / d) * zRadius; dy = (dy / d) * zRadius; }
@@ -1127,6 +1164,10 @@
   function bindActionButton(el){
     el.addEventListener('pointerdown', ev => {
       ev.preventDefault(); ensureAudio();
+      
+      const pauseOverlay = document.getElementById('overlay-pause');
+      if(pauseOverlay && pauseOverlay.classList.contains('visible')) return;
+
       if(S.isOnline && S.netRole === 'client'){ if(S.conn && S.conn.open) S.conn.send({type:'action'}); }
       else { const lp = getLocalPlayer(); if(lp) handleAction(lp); }
     });
@@ -1249,6 +1290,20 @@
         else if(data.type === 'full'){ document.getElementById('lobby-status').textContent = 'Room is full.'; }
         else if(data.type === 'state'){
           const st = data.state;
+          
+          // Only sync network state if client hasn't opened local pause menu
+          const pauseOverlay = document.getElementById('overlay-pause');
+          if(pauseOverlay && pauseOverlay.classList.contains('visible') && st.screen === 'playing') {
+             // Let the client keep their pause menu open locally
+          } else {
+             if(st.screen === 'playing' && S.screen !== 'playing'){
+               S.screen = 'playing'; hideOverlays();
+               const tc = document.getElementById('touch-controls'); if(tc) tc.style.display = 'flex';
+             } else if(st.screen === 'gameOver' && S.screen !== 'gameOver'){
+               S.screen = 'gameOver'; showGameOver(st.winnerTeam); // Fix st.winnerTeam instead of S.winnerTeam
+             } else if(st.screen === 'roundEnd') S.screen = 'roundEnd';
+          }
+          
           S.phase = st.phase; S.attackingTeam = st.attackingTeam; S.scores = st.scores;
           S.round = st.round; S.placedCount = st.placedCount; S.shake = st.shake; S.winnerTeam = st.winnerTeam;
           if(st.playerOrder) S.playerOrder = st.playerOrder;
@@ -1260,12 +1315,6 @@
           }
           S.balls = st.balls || []; S.stones = st.stones || []; S.particles = st.particles || [];
           
-          if(st.screen === 'playing' && S.screen !== 'playing'){
-            S.screen = 'playing'; hideOverlays();
-            const tc = document.getElementById('touch-controls'); if(tc) tc.style.display = 'flex';
-          } else if(st.screen === 'gameOver' && S.screen !== 'gameOver'){
-            S.screen = 'gameOver'; showGameOver(S.winnerTeam);
-          } else if(st.screen === 'roundEnd') S.screen = 'roundEnd';
           updateHUD();
         }
         if(data.audio) data.audio.forEach(a => playSound(a));
@@ -1337,10 +1386,6 @@
     });
   }
 
-  function togglePause(){
-    if(S.screen === 'playing'){ S.screen = 'paused'; showOverlay('overlay-pause'); }
-    else if(S.screen === 'paused'){ S.screen = 'playing'; hideOverlays(); }
-  }
   function showOverlay(id){
     document.querySelectorAll('.overlay').forEach(o => o.classList.remove('visible'));
     document.getElementById(id).classList.add('visible');
