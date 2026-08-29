@@ -1010,8 +1010,18 @@
     }
 
     @media (max-width: 650px) {
-      .overlay { padding: 12px; align-items: center; }
-      .card { margin: max(12px, env(safe-area-inset-top)) auto; padding: 26px 18px; border-radius: 20px; }
+      .hud-center {
+        position: static;
+        transform: none;
+        flex: 1;
+        text-align: left;
+        padding-left: 4px;
+      }
+      .hud-right {
+        gap: 6px;
+      }
+      .overlay { padding: 12px; align-items: center; justify-content: center; }
+      .card { margin: auto; padding: 26px 18px; border-radius: 20px; }
       .mode-cards { gap: 10px; }
       .mode-card { min-height: 108px; padding: 16px; }
       .mode-card::after { display: none; }
@@ -1221,6 +1231,7 @@
       };
 
       const COLORS = { attacker: '#D32F2F', defender: '#1B6E6A' };
+      const POOL_SIZE = { balls: 30, particles: 150 };
 
       function rand(a, b) { return a + Math.random() * (b - a); }
       function dist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
@@ -1247,13 +1258,15 @@
         scores: { A: 0, B: 0 }, round: 1, winnerTeam: null,
         muted: false,
         players: {}, playerOrder: ['p1'],
-        balls: [], stones: [], placedCount: 0,
-        particles: [], shake: { t: 0, mag: 0 },
-        lastTime: 0, time: 0,
-        toastTimer: null,
+        
+        // Pre-allocate fixed object pools
+        balls: Array.from({ length: POOL_SIZE.balls }, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, r: cfg.ballR, owner: null, history: [] })),
+        particles: Array.from({ length: POOL_SIZE.particles }, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, r: 0 })),
+        
+        stones: [], placedCount: 0, shake: { t: 0, mag: 0 },
+        lastTime: 0, time: 0, toastTimer: null,
         peer: null, conn: null, conns: {}, isOnline: false, netRole: 'host', netTimer: 0,
-        myId: 'p1', matchStarted: false,
-        audioQueue: [], toastQueue: [],
+        myId: 'p1', matchStarted: false, audioQueue: [], toastQueue: [],
         isTutorial: false, 
         tutState: { moved: false, aimThrown: false, pickedUp: false, placed: false, defendThrown: false, roundsPlayed: 0 }, 
         _lastTutMsg: ""
@@ -1368,7 +1381,7 @@
           if (S.phase === 'aim') {
             if (!S.tutState.moved) {
               msg = "<b>Step 1: Move!</b>Use Joystick or WASD/Arrows to move";
-            } else if (!S.tutState.aimThrown && S.balls.length === 0) {
+            } else if (!S.tutState.aimThrown && !S.balls.some(b => b.active)) {
               msg = "<b>Step 2: Throw!</b>Face the stack and press ACTION (Space / Enter / ●)";
             }
           } else {
@@ -1459,15 +1472,26 @@
       }
 
       function spawnDust(x, y, count) {
-        for (let i = 0; i < (count || 8); i++) {
-          S.particles.push({ x, y, vx: rand(-80, 80), vy: rand(-80, 80), life: 0, maxLife: rand(0.3, 0.6), r: rand(3, 6) });
+        let spawned = 0;
+        for (let i = 0; i < S.particles.length; i++) {
+          const p = S.particles[i];
+          if (!p.active) {
+            p.active = true;
+            p.x = x; p.y = y;
+            p.vx = rand(-80, 80); p.vy = rand(-80, 80);
+            p.life = 0; p.maxLife = rand(0.3, 0.6);
+            p.r = rand(3, 6);
+            spawned++;
+            if (spawned >= (count || 8)) break;
+          }
         }
       }
       function updateParticles(dt) {
-        for (let i = (S.particles || []).length - 1; i >= 0; i--) {
+        for (let i = 0; i < S.particles.length; i++) {
           const p = S.particles[i];
+          if (!p.active) continue;
           p.life += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.9; p.vy *= 0.9;
-          if (p.life >= p.maxLife) S.particles.splice(i, 1);
+          if (p.life >= p.maxLife) p.active = false;
         }
       }
       function shake(mag, t) { S.shake = { mag: mag || 0, t: t || 0 }; }
@@ -1484,10 +1508,16 @@
 
         const dx = player.facing.x;
         const dy = player.facing.y;
-        S.balls.push({
-          x: player.x + dx * (player.r + 12), y: player.y + dy * (player.r + 12),
-          vx: dx * speed, vy: dy * speed, r: cfg.ballR, owner: player.id, history: []
-        });
+        
+        const b = S.balls.find(ball => !ball.active);
+        if (b) {
+          b.active = true;
+          b.x = player.x + dx * (player.r + 12);
+          b.y = player.y + dy * (player.r + 12);
+          b.vx = dx * speed; b.vy = dy * speed;
+          b.r = cfg.ballR; b.owner = player.id;
+          b.history.length = 0;
+        }
         playSound('throw');
       }
 
@@ -1499,7 +1529,7 @@
           if (player.isOut) return;
 
           if (S.phase === 'aim') {
-            if (player.throwCdT <= 0 && S.balls.length === 0) {
+            if (player.throwCdT <= 0 && !S.balls.some(b => b.active)) {
               throwBall(player, cfg.attackerThrowSpeed, cfg.attackerThrowCooldown);
             }
           } else if (S.phase === 'rebuild') {
@@ -1519,10 +1549,18 @@
       function flashHit(p) { if (p) p.hitFlashT = 0.3; }
 
       function updateBalls(dt) {
-        for (let i = (S.balls || []).length - 1; i >= 0; i--) {
-          const b = S.balls[i]; if (!b) continue;
-          b.history = b.history || []; b.history.push({ x: b.x, y: b.y });
-          if (b.history.length > 6) b.history.shift();
+        for (let i = 0; i < S.balls.length; i++) {
+          const b = S.balls[i]; 
+          if (!b.active) continue;
+
+          if (b.history.length >= 6) {
+            const oldPt = b.history.shift();
+            oldPt.x = b.x; oldPt.y = b.y;
+            b.history.push(oldPt);
+          } else {
+            b.history.push({ x: b.x, y: b.y });
+          }
+
           b.x += (b.vx || 0) * dt; b.y += (b.vy || 0) * dt;
           let remove = false;
           if (dist(b.x, b.y, V_CX, V_CY) > V_ARENA_R + 80) remove = true;
@@ -1551,9 +1589,7 @@
                   if (target.lives <= 0) {
                     target.isOut = true;
                     if (getAttackers().every(p => p.isOut)) endRound('defenders');
-                  } else {
-                    target.invulnT = 1.0;
-                  }
+                  } else { target.invulnT = 1.0; }
                   remove = true;
                 }
               } else {
@@ -1567,7 +1603,7 @@
               if (dist(b.x, b.y, V_CX, V_CY) < b.r + 40) { knockStack(); remove = true; }
             }
           }
-          if (remove) S.balls.splice(i, 1);
+          if (remove) b.active = false;
         }
       }
 
@@ -1623,7 +1659,7 @@
             ai.facing = { x: dx / distToStack, y: dy / distToStack };
 
             const humanAttackerAlive = getAttackers().some(p => !p.isAI && !p.isOut);
-            if (!humanAttackerAlive && ai.throwCdT <= 0 && S.balls.length === 0) {
+            if (!humanAttackerAlive && ai.throwCdT <= 0 && !S.balls.some(b => b.active)) {
               if (Math.random() < 0.02 + (myAtkIndex === 0 ? 0.05 : 0)) {
                 throwBall(ai, cfg.attackerThrowSpeed, cfg.attackerThrowCooldown);
               }
@@ -1711,7 +1747,12 @@
         });
       }
       function startRound() {
-        S.phase = 'aim'; S.placedCount = 0; S.balls = []; S.particles = [];
+        S.phase = 'aim'; S.placedCount = 0; 
+        
+        // Deactivate pools instead of overwriting arrays with []
+        S.balls.forEach(b => b.active = false); 
+        S.particles.forEach(p => p.active = false);
+
         activePlayers().forEach(p => {
           p.invulnT = 0; p.dodgeT = 0; p.dodgeCdT = 0; p.throwCdT = 0; p.hitFlashT = 0; p.carrying = null;
           p.isOut = false;
@@ -1809,6 +1850,126 @@
       }
 
       /* ---------- drawing ---------- */
+
+      // --- 1. Initialize Off-screen Caches ---
+      const arenaCache = document.createElement('canvas');
+      let isCacheBuilt = false;
+
+      function buildCaches() {
+        // Pre-render the entire static background and arena once!
+        arenaCache.width = V_W;
+        arenaCache.height = V_H;
+        const actx = arenaCache.getContext('2d', { alpha: false });
+
+        // Background
+        actx.fillStyle = '#171224'; 
+        actx.fillRect(0, 0, V_W, V_H);
+
+        // Arena Base
+        const cg = actx.createRadialGradient(V_CX, V_CY - V_ARENA_R * 0.3, 10, V_CX, V_CY, V_ARENA_R);
+        cg.addColorStop(0, '#C17A48'); 
+        cg.addColorStop(1, '#8C5027');
+        
+        actx.beginPath(); 
+        actx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); 
+        actx.fillStyle = cg; 
+        actx.fill();
+
+        // Arena Borders
+        actx.setLineDash([10, 10]); 
+        actx.lineWidth = 3; 
+        actx.strokeStyle = 'rgba(243,233,210,0.55)';
+        actx.beginPath(); 
+        actx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); 
+        actx.stroke(); 
+        actx.setLineDash([]);
+        
+        actx.strokeStyle = 'rgba(243,233,210,0.18)'; 
+        actx.lineWidth = 2;
+        actx.beginPath(); 
+        actx.arc(V_CX, V_CY, V_ARENA_R * 0.55, 0, Math.PI * 2); 
+        actx.stroke();
+
+        // Center Shadow
+        actx.beginPath(); 
+        actx.ellipse(V_CX, V_CY + 4, 40, 16, 0, 0, Math.PI * 2);
+        actx.fillStyle = 'rgba(0,0,0,0.25)'; 
+        actx.fill();
+
+        isCacheBuilt = true;
+      }
+
+      // --- 2. Optimized Main Draw Loop ---
+      function draw() {
+        if (!canvas.width) resize();
+        if (!isCacheBuilt) buildCaches(); // Build static assets once
+
+        const w = canvas.width, h = canvas.height;
+        
+        // Reset transform to identity for clearing letterbox areas
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#171224'; 
+        ctx.fillRect(0, 0, w, h);
+
+        let scale = Math.min(w / V_W, h / V_H) || 1;
+        const offsetX = (w - V_W * scale) / 2, offsetY = (h - V_H * scale) / 2;
+
+        // Apply scale/translation directly via setTransform instead of save()/restore() wrapping the whole frame
+        ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+        
+        if (S.shake && S.shake.t > 0) {
+          ctx.translate(rand(-1, 1) * S.shake.mag * S.shake.t, rand(-1, 1) * S.shake.mag * S.shake.t);
+        }
+
+        // ONE draw call replaces dozens of gradient/arc calculations!
+        ctx.drawImage(arenaCache, 0, 0);
+        
+        drawStones(); 
+        
+        // Draw Players
+        activePlayers().forEach(p => {
+          if (!p || !isFinite(p.x)) return;
+          const isOutAtk = (p.team === S.attackingTeam && p.isOut);
+          
+          // Draw generic shadow (hoisted alpha to avoid save/restore)
+          ctx.globalAlpha = isOutAtk ? 0.3 : 1;
+          ctx.beginPath(); 
+          ctx.ellipse(p.x, p.y + p.r * 0.7, p.r * 0.9, p.r * 0.4, 0, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.3)'; 
+          ctx.fill();
+
+          // Blinking logic
+          if (p.invulnT > 0 || p.dodgeT > 0) {
+            ctx.globalAlpha = (isOutAtk ? 0.3 : 1) * (0.55 + 0.35 * Math.sin(S.time * 20));
+          }
+          
+          let bob = (p.dodgeT > 0) ? -5 : 0; 
+          drawAvatar(ctx, p, bob);
+          
+          ctx.globalAlpha = 1; // Reset alpha
+
+          if (p.carrying != null) drawStoneShape(p.x, p.y - 45, 18, 10, 0, ['#F0B968', '#C77E22']);
+
+          // Name Tags (Optimized font assignments)
+          ctx.font = '700 16px Mukta, sans-serif'; 
+          ctx.textAlign = 'center';
+          
+          const isMe = S.mode !== 'single' && ((S.netRole === 'host' && p.id === 'p1') || (S.netRole === 'client' && p.id === S.myId));
+          const label = S.mode === 'single' ? (p.id === 'p1' ? 'You' : 'CPU') : (isMe ? 'You' : (p.label || p.id.toUpperCase()));
+          const labelText = label + (isOutAtk ? ' (out)' : '');
+          
+          ctx.lineWidth = 3; 
+          ctx.strokeStyle = 'rgba(23,18,36,0.9)';
+          ctx.strokeText(labelText, p.x, p.y - p.r - 20);
+          ctx.fillStyle = '#F3E9D2'; 
+          ctx.fillText(labelText, p.x, p.y - p.r - 20);
+        });
+
+        drawBalls(); 
+        drawParticles();
+      }
+
+      // --- 3. Optimized Avatar Renderer ---
       function drawAvatar(ctx, p, bob) {
           ctx.save();
           ctx.translate(p.x, p.y + bob - 10);
@@ -1822,12 +1983,13 @@
 
           const s = 2.5; 
           
+          // Hoisted styles out of the inner loop
+          ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+          ctx.lineWidth = 1.5;
+
           const rect = (cx, cy, w, h, col) => {
-              if (p.hitFlashT > 0) col = '#FFF';
-              ctx.fillStyle = col;
+              ctx.fillStyle = (p.hitFlashT > 0) ? '#FFF' : col;
               ctx.fillRect(cx * s, cy * s, w * s, h * s);
-              ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-              ctx.lineWidth = 1.5;
               ctx.strokeRect(cx * s, cy * s, w * s, h * s);
           };
 
@@ -1836,8 +1998,8 @@
           const skin = '#FFC499';
           const pants = '#183153';
           const shoes = '#222222';
-          const shirtBody = '#222222'; // Dark gray/black body
-          const sleeve = isA ? '#D32F2F' : '#1B6E6A'; // Red vs Teal
+          const shirtBody = '#222222'; 
+          const sleeve = isA ? '#D32F2F' : '#1B6E6A'; 
           const carrying = p.carrying != null;
 
           const drawArm = (x, y, isCarrying) => {
@@ -1851,169 +2013,42 @@
           };
 
           if (dir === 'down') {
-              // Back Hair (behind head)
               rect(-6, -11, 12, 10, hair);
-              
-              // Arms (behind body slightly or same level)
-              drawArm(-8, -1, carrying);
-              drawArm(5, -1, carrying);
-              
-              // Legs
+              drawArm(-8, -1, carrying); drawArm(5, -1, carrying);
               rect(-4, 6, 3, 3, pants); rect(1, 6, 3, 3, pants);
               rect(-4, 9, 3, 2, shoes); rect(1, 9, 3, 2, shoes);
-              
-              // Body
               rect(-5, -2, 10, 8, shirtBody);
-              
-              // Face
               rect(-5, -8, 10, 7, skin);
-              
-              // Eyes
               rect(-4, -5, 3, 3, '#FFF'); rect(1, -5, 3, 3, '#FFF');
               rect(-3, -4, 1, 2, '#000'); rect(2, -4, 1, 2, '#000');
-              
-              // Front Hair (Bangs)
-              rect(-6, -12, 4, 4, hair); 
-              rect(-2, -13, 5, 4, hair); 
-              rect(3, -11, 3, 4, hair);
-              
+              rect(-6, -12, 4, 4, hair); rect(-2, -13, 5, 4, hair); rect(3, -11, 3, 4, hair);
           } else if (dir === 'up') {
-              // Arms
-              drawArm(-8, -1, carrying);
-              drawArm(5, -1, carrying);
-              
-              // Legs
+              drawArm(-8, -1, carrying); drawArm(5, -1, carrying);
               rect(-4, 6, 3, 3, pants); rect(1, 6, 3, 3, pants);
               rect(-4, 9, 3, 2, shoes); rect(1, 9, 3, 2, shoes);
-              
-              // Body
               rect(-5, -2, 10, 8, shirtBody);
-              
-              // Hair (covers back of head)
               rect(-6, -11, 12, 10, hair);
-              rect(-6, -12, 4, 4, hair); 
-              rect(-2, -13, 5, 4, hair); 
-              rect(3, -11, 3, 4, hair);
-              
+              rect(-6, -12, 4, 4, hair); rect(-2, -13, 5, 4, hair); rect(3, -11, 3, 4, hair);
           } else if (dir === 'right') {
-              // Left arm (back)
               drawArm(-4, -1, carrying);
-              
-              // Legs
-              rect(-3, 6, 6, 3, pants);
-              rect(-3, 9, 6, 2, shoes);
-              
-              // Body
+              rect(-3, 6, 6, 3, pants); rect(-3, 9, 6, 2, shoes);
               rect(-4, -2, 8, 8, shirtBody);
-              
-              // Face (profile)
               rect(-3, -8, 8, 7, skin);
-              
-              // Eye
               rect(2, -5, 3, 3, '#FFF'); rect(3, -4, 1, 2, '#000');
-              
-              // Hair
-              rect(-5, -11, 10, 10, hair);
-              rect(-3, -13, 5, 4, hair); 
-              rect(3, -11, 3, 4, hair);
-              
-              // Right arm (front)
+              rect(-5, -11, 10, 10, hair); rect(-3, -13, 5, 4, hair); rect(3, -11, 3, 4, hair);
               drawArm(-1, -1, carrying);
-              
           } else if (dir === 'left') {
-              // Right arm (back)
               drawArm(1, -1, carrying);
-              
-              // Legs
-              rect(-3, 6, 6, 3, pants);
-              rect(-3, 9, 6, 2, shoes);
-              
-              // Body
+              rect(-3, 6, 6, 3, pants); rect(-3, 9, 6, 2, shoes);
               rect(-4, -2, 8, 8, shirtBody);
-              
-              // Face (profile)
               rect(-5, -8, 8, 7, skin);
-              
-              // Eye
               rect(-5, -5, 3, 3, '#FFF'); rect(-4, -4, 1, 2, '#000');
-              
-              // Hair
-              rect(-5, -11, 10, 10, hair);
-              rect(-2, -13, 5, 4, hair); 
-              rect(-6, -11, 3, 4, hair);
-              
-              // Left arm (front)
+              rect(-5, -11, 10, 10, hair); rect(-2, -13, 5, 4, hair); rect(-6, -11, 3, 4, hair);
               drawArm(-2, -1, carrying);
           }
           ctx.restore();
       }
 
-      function draw() {
-        if (!canvas.width) resize();
-        const w = canvas.width, h = canvas.height;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = '#171224'; ctx.fillRect(0, 0, w, h);
-
-        let scale = Math.min(w / V_W, h / V_H) || 1;
-        const offsetX = (w - V_W * scale) / 2, offsetY = (h - V_H * scale) / 2;
-
-        ctx.save(); ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-        if (S.shake && S.shake.t > 0) ctx.translate(rand(-1, 1) * S.shake.mag * S.shake.t, rand(-1, 1) * S.shake.mag * S.shake.t);
-
-        drawArena(); drawStones(); 
-        
-        // Draw Players
-        activePlayers().forEach(p => {
-          if (!p || !isFinite(p.x)) return;
-          const isOutAtk = (p.team === S.attackingTeam && p.isOut);
-          ctx.save();
-          if (isOutAtk) ctx.globalAlpha = 0.3;
-
-          // Shadow
-          ctx.beginPath(); ctx.ellipse(p.x, p.y + p.r * 0.7, p.r * 0.9, p.r * 0.4, 0, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill();
-
-          ctx.save();
-          if (p.invulnT > 0 || p.dodgeT > 0) ctx.globalAlpha = (isOutAtk ? 0.3 : 1) * (0.55 + 0.35 * Math.sin(S.time * 20));
-          
-          let bob = (p.dodgeT > 0) ? -5 : 0; 
-          drawAvatar(ctx, p, bob);
-          
-          ctx.restore();
-
-          if (p.carrying != null) drawStoneShape(p.x, p.y - 45, 18, 10, 0, ['#F0B968', '#C77E22']);
-
-          ctx.font = '700 16px Mukta, sans-serif'; ctx.textAlign = 'center';
-          const isMe = S.mode !== 'single' && ((S.netRole === 'host' && p.id === 'p1') || (S.netRole === 'client' && p.id === S.myId));
-          const label = S.mode === 'single' ? (p.id === 'p1' ? 'You' : 'CPU') : (isMe ? 'You' : (p.label || p.id.toUpperCase()));
-          
-          const labelText = label + (isOutAtk ? ' (out)' : '');
-          ctx.lineWidth = 3; 
-          ctx.strokeStyle = 'rgba(23,18,36,0.9)';
-          ctx.strokeText(labelText, p.x, p.y - p.r - 20);
-          ctx.fillStyle = '#F3E9D2'; 
-          ctx.fillText(labelText, p.x, p.y - p.r - 20);
-
-          ctx.restore();
-        });
-
-        drawBalls(); drawParticles();
-        ctx.restore();
-      }
-
-      function drawArena() {
-        const cg = ctx.createRadialGradient(V_CX, V_CY - V_ARENA_R * 0.3, 10, V_CX, V_CY, V_ARENA_R || 100);
-        cg.addColorStop(0, '#C17A48'); cg.addColorStop(1, '#8C5027');
-        ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); ctx.fillStyle = cg; ctx.fill();
-
-        ctx.setLineDash([10, 10]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(243,233,210,0.55)';
-        ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-        ctx.strokeStyle = 'rgba(243,233,210,0.18)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(V_CX, V_CY, V_ARENA_R * 0.55, 0, Math.PI * 2); ctx.stroke();
-
-        ctx.beginPath(); ctx.ellipse(V_CX, V_CY + 4, 40, 16, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-      }
       function drawStoneShape(x, y, rx, ry, rot, shade) {
         ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
         const grad = ctx.createLinearGradient(-(rx || 1), -(ry || 1), (rx || 1), (ry || 1));
@@ -2043,8 +2078,8 @@
       }
       
       function drawBalls() {
-        (S.balls || []).forEach(b => {
-          if (!b || !isFinite(b.x)) return;
+        S.balls.forEach(b => {
+          if (!b.active || !isFinite(b.x)) return;
           if (b.history && b.history.length > 0) {
             ctx.beginPath(); ctx.moveTo(b.history[0].x, b.history[0].y);
             for (let j = 1; j < b.history.length; j++) ctx.lineTo(b.history[j].x, b.history[j].y);
@@ -2060,7 +2095,8 @@
         });
       }
       function drawParticles() {
-        (S.particles || []).forEach(p => {
+        S.particles.forEach(p => {
+          if (!p.active) return;
           let a = 1 - (p.life / p.maxLife); if (a < 0 || a > 1) return;
           ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.1, p.r * a), 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(243,233,210,' + (a * 0.7) + ')'; ctx.fill();
@@ -2459,39 +2495,80 @@
         });
         return {
           phase: S.phase, attackingTeam: S.attackingTeam, scores: S.scores, round: S.round, placedCount: S.placedCount, shake: S.shake, winnerTeam: S.winnerTeam, screen: S.screen, playerOrder: S.playerOrder, players: playersOut,
-          balls: (S.balls || []).map(b => ({ x: b.x, y: b.y, r: b.r, owner: b.owner, history: b.history ? b.history.slice(-5) : [] })),
+          balls: S.balls.filter(b => b.active).map(b => ({ active: true, x: b.x, y: b.y, r: b.r, owner: b.owner, history: b.history ? b.history.slice(-5) : [] })),
           stones: (S.stones || []).map(s => ({ i: s.i, state: s.state, x: s.x, y: s.y, z: s.z, rot: s.rot, landed: s.landed, placedIndex: s.placedIndex, animT: s.animT })),
-          particles: (S.particles || []).map(p => ({ x: p.x, y: p.y, r: p.r, life: p.life, maxLife: p.maxLife }))
+          particles: S.particles.filter(p => p.active).map(p => ({ active: true, x: p.x, y: p.y, r: p.r, life: p.life, maxLife: p.maxLife }))
         };
       }
 
+      let uiUpdateTimer = 0; // Tracks time for throttled UI updates
+
+      // Separated game logic for clean architecture
+      function updateLogic(dt) {
+        activePlayers().forEach(p => {
+          // Pre-calculate to avoid repetitive Math.max checks where possible
+          if (p.throwCdT > 0) p.throwCdT = Math.max(0, p.throwCdT - dt);
+          if (p.dodgeCdT > 0) p.dodgeCdT = Math.max(0, p.dodgeCdT - dt);
+          if (p.dodgeT > 0)   p.dodgeT   = Math.max(0, p.dodgeT - dt);
+          if (p.invulnT > 0)  p.invulnT  = Math.max(0, p.invulnT - dt);
+          if (p.hitFlashT > 0) p.hitFlashT = Math.max(0, p.hitFlashT - dt);
+          
+          if (p.isAI) updateAI(p, dt); 
+          else updateHuman(p, dt);
+        });
+
+        updateStones(dt); 
+        updatePickupDeposit(); 
+        updateBalls(dt); 
+        updateParticles(dt);
+        
+        if (S.shake && S.shake.t > 0) S.shake.t = Math.max(0, S.shake.t - dt);
+      }
+
+      // The optimized Main Game Loop
       function loop(ts) {
         requestAnimationFrame(loop);
-        if (!S.lastTime) S.lastTime = ts; const dt = Math.min(0.033, (ts - S.lastTime) / 1000 || 0);
-        S.lastTime = ts; S.time += dt;
+        
+        // 1. Delta-time calculation with fail-safe clamping (prevents physics tunneling on tab switch)
+        if (!S.lastTime) S.lastTime = ts;
+        const rawDt = (ts - S.lastTime) / 1000;
+        S.lastTime = ts;
+        
+        // Cap dt at 50ms (20fps fallback) so a lag spike doesn't break collision bounds
+        const dt = Math.min(rawDt, 0.05); 
+        S.time += dt;
 
         if (S.screen === 'playing') {
           if (!S.isOnline || S.netRole === 'host') {
-            activePlayers().forEach(p => {
-              p.throwCdT = Math.max(0, p.throwCdT - dt); p.dodgeCdT = Math.max(0, p.dodgeCdT - dt);
-              p.dodgeT = Math.max(0, p.dodgeT - dt); p.invulnT = Math.max(0, p.invulnT - dt); p.hitFlashT = Math.max(0, p.hitFlashT - dt);
-              if (p.isAI) updateAI(p, dt); else updateHuman(p, dt);
-            });
-            updateStones(dt); updatePickupDeposit(); updateBalls(dt); updateParticles(dt);
-            if (S.shake && S.shake.t > 0) S.shake.t = Math.max(0, S.shake.t - dt);
-            updateHUD();
+            
+            // 2. Execute Game Physics
+            updateLogic(dt);
 
+            // 3. Network Tick (Capped at ~30 FPS to save bandwidth and CPU)
             if (S.isOnline && S.netRole === 'host') {
               S.netTimer += dt;
-              if (S.netTimer > 0.033) {
-                S.netTimer = 0; const payload = { type: 'state', state: buildNetworkState(), audio: S.audioQueue, toasts: S.toastQueue };
-                Object.values(S.conns).forEach(c => { if (c && c.open) { try { c.send(payload); } catch (e) { } } });
-                S.audioQueue = []; S.toastQueue = [];
+              if (S.netTimer >= 0.0333) {
+                const payload = { type: 'state', state: buildNetworkState(), audio: S.audioQueue, toasts: S.toastQueue };
+                Object.values(S.conns).forEach(c => { 
+                  if (c && c.open) { try { c.send(payload); } catch (e) {} } 
+                });
+                S.audioQueue = []; 
+                S.toastQueue = [];
+                S.netTimer %= 0.0333; // Prevent timer drift
               }
             }
           }
-          updateTutorialUI();
+
+          // 4. Throttle DOM UI Updates to ~15 FPS (Saves massive CPU overhead)
+          uiUpdateTimer += dt;
+          if (uiUpdateTimer >= 0.066) { 
+            updateHUD();
+            updateTutorialUI();
+            uiUpdateTimer %= 0.066; // Prevent timer drift
+          }
         }
+        
+        // 5. Render graphics (runs at screen native refresh rate)
         draw();
       }
 
